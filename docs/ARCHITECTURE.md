@@ -30,6 +30,8 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `server/match.js` | One match: authoritative rules (movement validation, hitscan w/ lag compensation, projectiles, loot, storm, building, death, win, rewards) |
 | `server/bots.js` | Bot AI |
 | `server/accounts.js` | Accounts: username (ALL CAPS), email stored only as HMAC hash, scrypt passwords, sessions, Ball Bucks |
+| `server/static.js`, `server/net.js` | Static files (CSP, gzip/brotli, ETag caching, versioned `/vendor/three@x/`), client IP + rate limiter helpers |
+| `server/safefile.js` | Atomic JSON saves, rolling backups, corrupt-file recovery (used for `accounts.json`, `admin.json`) |
 | `server/admin.js` | `/admin` panel API (password `ADMIN_PASSWORD`), news, broadcasts, scheduled parties |
 | `client/index.html`, `client/css/style.css` | All screens: sign-in, Locker Room menu, lobby, HUD, shop, overlays |
 | `client/js/main.js` | Menu/Locker Room, auth, shop, squads, admin drop-down, party popups, starts `Game` |
@@ -45,9 +47,11 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 ## Network protocol (JSON over `/ws`)
 Client → server: `hello{token,skin}`, `signup`, `login`, `logout`, `join{create|room|mode}`, `start`, `leave`,
 `in{x,y,z,yaw,pitch,em,ph}` (20 Hz), `jump`, `deploy`, `fire{aim,dirs,rt}`, `reload`, `slot{i}`, `pickup{id}`,
-`open{id}`, `drop`, `build{k,gx,gy,gz,r}`, `buy{item}`, `party_*`, `admin{action}`.
+`open{id}`, `drop`, `build{k,gx,gy,gz,r}`, `buy{item}`, `delete_account{password}`, `party_*`, `admin{action}`.
 Server → client: `auth`, `auth_needed`, `profile`, `welcome`, `lobby`, `start`, `s` (20 Hz snapshot: `ps` player
-array, `ev` events, `zn` zone, `me` private state, `pe` personal events), `end`, `closed`, `reward`, `bc`, `party_time`, `error`.
+array, `ev` events, `zn` zone, `me` private state, `pe` personal events), `end`, `closed`, `reward`, `bc`, `party_time`, `account_deleted`, `delete_error`, `error`.
+Pages must keep working under the CSP: no inline `on*=` handlers and no `eval`; inline `<script>` blocks are allowed
+automatically (the server hashes them), inline styles are fine.
 
 ## Rules every change must follow
 - **Original content only.** No Fortnite/Epic, NFL, NCAA or brand names, logos, likenesses or assets. No real people.
