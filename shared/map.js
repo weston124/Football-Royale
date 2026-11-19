@@ -76,7 +76,7 @@ export function generateMap(seed = MAP_SEED) {
   decor.push({ type: 'scoreboard', x: 0, z: 49, h: 14 });
   scatterLoot(0, 0, 45, 10);
   for (let i = 0; i < 6; i++) loot.push({ x: rnd.range(-50, 50), y: 6, z: (rnd() < 0.5 ? 1 : -1) * 47 });
-  chests.push({ x: 0, y: 0, z: 0 }, { x: -40, y: 0, z: 20 }, { x: 40, y: 0, z: -20 }, { x: 0, y: 6, z: -46.5 });
+  chests.push({ x: 0, y: 0, z: 0 }, { x: -40, y: 0, z: 20 }, { x: 40, y: 0, z: -20 }, { x: 22, y: 6, z: -47 }); // top row of the stands, beside the press box
 
   // ---------------- Practice Fields ----------------
   pois.push({ name: 'Practice Fields', x: -290, z: -280, r: 90 });
@@ -109,7 +109,7 @@ export function generateMap(seed = MAP_SEED) {
       house(cx, cz, rnd.range(12, 20), rnd.range(10, 18), rnd.range(4.5, 6.5), col, rnd.int(0, 3), 0x3c3f47);
     }
   }
-  chests.push({ x: 280, y: 0, z: -280 }, { x: 240, y: 0, z: -320 });
+  chests.push({ x: 300, y: 0, z: -300 }, { x: 240, y: 0, z: -320 }); // street crossing + inside a shop (block centres can be solid towers)
 
   // ---------------- Tailgate Lot ----------------
   pois.push({ name: 'Tailgate Lot', x: 290, z: 260, r: 95 });
