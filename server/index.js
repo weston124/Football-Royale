@@ -238,7 +238,7 @@ wss.on('connection', (ws, req) => {
         return send(c, { t: 'auth_needed' });
       }
       case 'buy': {
-        const problem = profiles.buy(c.profile, String(m.item || ''));
+        const problem = accounts.buy(c.profile, String(m.item || ''));
         if (problem) return err(c, problem);
         send(c, { t: 'bought', item: m.item });
         sendProfile(c);

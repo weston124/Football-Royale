@@ -79,11 +79,11 @@ export function supportHeight(world, x, y, z) {
   return best;
 }
 
-function blocked(world, x, y, z, onGround) {
+function blocked(world, x, y, z, onGround, ignore = null) {
   const r = PLAYER.radius;
   const list = world.query(x - r, z - r, x + r, z + r, tmp);
   for (const b of list) {
-    if (b.ramp) continue;
+    if (b.ramp || (ignore && ignore.includes(b))) continue;
     if (x + r <= b.min[0] || x - r >= b.max[0] || z + r <= b.min[2] || z - r >= b.max[2]) continue;
     const feet = y + (onGround ? PLAYER.stepUp : 0.05);
     if (feet >= b.max[1] || y + PLAYER.height <= b.min[1]) continue;
@@ -119,11 +119,17 @@ export function stepPlayer(world, p, input, dt) {
   p.vy -= PLAYER.gravity * dt;
   if (p.vy < -60) p.vy = -60;
 
-  // Horizontal, one axis at a time.
+  // Horizontal, one axis at a time. Anything we already overlap (a wall built on top of
+  // us, a squeeze after a correction) doesn't block, so nobody gets stuck inside a box.
+  let inside = null;
+  for (let b = blocked(world, p.x, p.y, p.z, p.onGround); b; b = blocked(world, p.x, p.y, p.z, p.onGround, inside)) {
+    (inside ||= []).push(b);
+    if (inside.length > 4) break;
+  }
   const nx = p.x + p.vx * dt;
-  if (!blocked(world, nx, p.y, p.z, p.onGround)) p.x = nx; else p.vx = 0;
+  if (!blocked(world, nx, p.y, p.z, p.onGround, inside)) p.x = nx; else p.vx = 0;
   const nz = p.z + p.vz * dt;
-  if (!blocked(world, p.x, p.y, nz, p.onGround)) p.z = nz; else p.vz = 0;
+  if (!blocked(world, p.x, p.y, nz, p.onGround, inside)) p.z = nz; else p.vz = 0;
   clampMap(p);
 
   // Vertical.

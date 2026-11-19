@@ -13,7 +13,10 @@ import { updateBot, BOT_NAMES } from './bots.js';
 
 const MAP = generateMap();
 const DT = 1 / TICK_RATE;
-export const now = () => performance.now() / 1000;
+// Clock: real time normally; tests and the headless simulator can swap in a fake one.
+let clockFn = () => performance.now() / 1000;
+export const now = () => clockFn();
+export function setClock(fn) { clockFn = fn || (() => performance.now() / 1000); }
 const PHASE_CODE = { ground: 0, blimp: 1, fall: 2, glide: 3, dead: 4 };
 export const WCODES = ['tackle', ...GUN_IDS];
 
@@ -197,7 +200,7 @@ export class Match {
   rollWeapon(chest) {
     const rarity = this.rollRarity(chest);
     const pool = GUN_IDS.filter((g) => (WEAPONS[g].minRarity || 0) <= rarity && g !== 'whistle');
-    const weights = { pistol: 3, smg: 3, rifle: 4, shotgun: 3, sniper: 1.2, pigskin: 0.8 };
+    const weights = { pistol: 3.2, smg: 3, rifle: 2.6, shotgun: 3, sniper: 1, pigskin: 0.8 };
     let tot = pool.reduce((s, g) => s + weights[g], 0), r = this.rnd() * tot;
     let w = pool[0];
     for (const g of pool) { if ((r -= weights[g]) < 0) { w = g; break; } }
@@ -217,7 +220,12 @@ export class Match {
     return l;
   }
   lootEntry(l) { return [l.id, Math.round(l.x * 10) / 10, Math.round(l.y * 10) / 10, Math.round(l.z * 10) / 10, l.item]; }
-  dropLoot(item, x, y, z) {
+  // Dropped things land on the floor below (not mid-air where someone was hit while
+  // jumping or parachuting) and never inside a wall: pulled back toward (fx, fz) if needed.
+  dropLoot(item, x, y, z, fx = x, fz = z) {
+    x = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, x)); z = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, z));
+    for (let k = 0; k < 4 && this.insideSolid(x, supportHeight(this.world, x, y + 0.5, z), z); k++) { x = (x + fx) / 2; z = (z + fz) / 2; }
+    y = supportHeight(this.world, x, y + 0.5, z);
     const l = this.addLoot(item, x, y, z);
     this.events.push(['l+', ...this.lootEntry(l)]);
     return l;
@@ -230,9 +238,12 @@ export class Match {
       if (this.insideSolid(s.x, y, s.z)) continue;
       const item = this.rollItem(party);
       this.addLoot(item, s.x, y, s.z);
-      if (party) this.addLoot(this.rollItem(true), s.x - 0.9, y, s.z + 0.9);
-      if (item.w && item.w !== 'whistle' && this.rnd() < 0.5) this.addLoot({ c: 'tape', n: 2 }, s.x + 0.8, y, s.z + 0.5);
-      if (this.mode === 'build' && this.rnd() < 0.25) this.addLoot({ mats: 30 }, s.x - 0.8, y, s.z - 0.5);
+      // extras sit next to the main item, or on top of it if that spot is inside something
+      const near = (dx, dz) => (this.insideSolid(s.x + dx, y, s.z + dz) || Math.abs(supportHeight(this.world, s.x + dx, y + 0.5, s.z + dz) - y) > 0.3 ? [s.x, s.z] : [s.x + dx, s.z + dz]);
+      const at = (it, dx, dz) => { const [x, z] = near(dx, dz); this.addLoot(it, x, y, z); };
+      if (party) at(this.rollItem(true), -0.9, 0.9);
+      if (item.w && item.w !== 'whistle' && this.rnd() < 0.5) at({ c: 'tape', n: 2 }, 0.8, 0.5);
+      if (this.mode === 'build' && this.rnd() < 0.25) at({ mats: 30 }, -0.8, -0.5);
     }
   }
   insideSolid(x, y, z) {
@@ -263,7 +274,7 @@ export class Match {
     if (p.slot > 0) {
       const old = p.inv[p.slot - 1];
       p.inv[p.slot - 1] = item;
-      this.dropLoot(old, p.x + this.rnd.range(-0.7, 0.7), p.y, p.z + this.rnd.range(-0.7, 0.7));
+      this.dropLoot(old, p.x + this.rnd.range(-0.7, 0.7), p.y, p.z + this.rnd.range(-0.7, 0.7), p.x, p.z);
       return true;
     }
     p.pev.push(['msg', 'Backpack full! Pick a slot (2-6) to swap.']);
@@ -295,7 +306,7 @@ export class Match {
         if (p.slot > 0 && p.inv[p.slot - 1]) {
           const it = p.inv[p.slot - 1]; p.inv[p.slot - 1] = null;
           const fx = -Math.sin(p.yaw) * 1.5, fz = -Math.cos(p.yaw) * 1.5;
-          this.dropLoot(it, p.x + fx, p.y, p.z + fz);
+          this.dropLoot(it, p.x + fx, p.y, p.z + fz, p.x, p.z);
         }
         return;
       }
@@ -356,7 +367,9 @@ export class Match {
     const it = this.currentItem(p);
     if (!it || !it.w) return;
     const W = WEAPONS[it.w];
-    if (!W.mag || it.ammo >= W.mag || p.reloadUntil > now()) return;
+    // reloadUntil stays set until simulate() finishes the reload: restarting it in the
+    // tick it runs out used to throw the reload away (bots then reloaded forever)
+    if (!W.mag || it.ammo >= W.mag || p.reloadUntil) return;
     p.reloadUntil = now() + W.reload;
     p.reloadSlot = p.slot;
     p.useUntil = 0;
@@ -370,7 +383,7 @@ export class Match {
     p.emote = 0;
     if (it.c) { // consumable: start using
       const C = CONSUMABLES[it.c];
-      if (p.useUntil > t) return;
+      if (p.useUntil) return; // still using (or just finished: simulate() applies it this tick)
       if (C.heal && p.hp >= C.max) return p.pev.push(['msg', `Already at ${C.max} health`]);
       if (C.padding && p.pad >= C.max) return p.pev.push(['msg', 'Padding is full']);
       p.useUntil = t + C.time; p.useSlot = p.slot;
@@ -379,8 +392,8 @@ export class Match {
     }
     const W = WEAPONS[it.w];
     if (t < p.nextFire - 0.04) return;
-    if (W.mag && (it.ammo <= 0 || p.reloadUntil > t)) return;
-    const rateMul = p.bot ? BOT_DIFFICULTY[this.difficulty].fireMul : 1;
+    if (W.mag && (it.ammo <= 0 || p.reloadUntil)) return;
+    const rateMul = p.bot ? (p.ai && p.ai.rateMul) || BOT_DIFFICULTY[this.difficulty].fireMul : 1;
     p.nextFire = Math.max(t, p.nextFire) + 1 / (W.rate * rateMul);
     if (p.nextFire < t) p.nextFire = t + 1 / (W.rate * rateMul);
     p.useUntil = 0;
@@ -470,7 +483,7 @@ export class Match {
   }
 
   damage(q, amount, by, wid, head) {
-    if (!q.alive || this.kind === 'island') return;
+    if (!q.alive || this.kind === 'island' || this.state !== 'play') return; // nobody gets hurt after the win
     if (by && by !== q && by.team === q.team) return; // no hurting teammates
     amount = Math.round(amount);
     const fromPad = Math.min(q.pad, amount);
@@ -480,7 +493,7 @@ export class Match {
     q.useUntil = 0;
     if (by) {
       q.pev.push(['hurt', r2(by.x), r2(by.z)]);
-      if (q.bot) q.ai.attacker = by.id;
+      if (q.bot && q.ai) { q.ai.attacker = by.id; q.ai.hurtAt = now(); }
     }
     if (q.hp <= 0) this.kill(q, by, wid, head);
   }
@@ -495,12 +508,12 @@ export class Match {
     else if (wid !== 'quit' && q.place <= 25 && q.place > 1) this.reward(q, BUCKS.top25, `top ${q.place}`);
     this.events.push(['kf', by ? by.id : 0, q.id, wid || 'storm', head ? 1 : 0]);
     q.pev.push(['dead', q.place, by ? by.id : 0]);
-    // fumble the loot
-    const items = q.inv.filter(Boolean);
+    // fumble the loot (not on Party Island: people leaving would pile up party gear)
+    const items = this.kind === 'island' ? [] : q.inv.filter(Boolean);
     if (q.mats > 0) items.push({ mats: q.mats });
     items.forEach((it, i) => {
       const a = (i / Math.max(1, items.length)) * Math.PI * 2;
-      this.dropLoot(it, q.x + Math.cos(a) * 1.3, q.y, q.z + Math.sin(a) * 1.3);
+      this.dropLoot(it, q.x + Math.cos(a) * 1.3, q.y, q.z + Math.sin(a) * 1.3, q.x, q.z);
     });
     q.inv = [null, null, null, null, null];
     q.mats = 0;
@@ -545,7 +558,7 @@ export class Match {
     if (this.mode === 'build') items.push({ mats: BUILD.crateMats });
     items.forEach((it, i) => {
       const a = (i / items.length) * Math.PI * 2 + 0.4;
-      this.dropLoot(it, c.x + Math.cos(a) * 1.2, c.y, c.z + Math.sin(a) * 1.2);
+      this.dropLoot(it, c.x + Math.cos(a) * 1.2, c.y, c.z + Math.sin(a) * 1.2, c.x, c.z);
     });
   }
 
@@ -565,6 +578,14 @@ export class Match {
     const cx = gx * G + G / 2, cy = gy * G + G / 2, cz = gz * G + G / 2;
     if (Math.hypot(cx - p.x, cz - p.z) > 12 || Math.abs(cy - p.y) > 12) return;
     const b = pieceBox(kind, gx, gy, gz, r, G, BUILD.thick);
+    // no walling other players in (you can step out of your own)
+    if (kind === 'wall') {
+      for (const q of this.players.values()) {
+        if (q === p || !q.alive || q.phase !== 'ground') continue;
+        const R = PLAYER.radius;
+        if (q.x + R > b.min[0] && q.x - R < b.max[0] && q.z + R > b.min[2] && q.z - R < b.max[2] && q.y < b.max[1] && q.y + PLAYER.height > b.min[1]) return;
+      }
+    }
     const piece = { id: this.nextId++, kind, gx, gy, gz, r, hp: BUILD.hp[kind], key };
     b.pid = piece.id; b.kind = 'piece';
     piece.box = this.world.add(b);
@@ -583,6 +604,13 @@ export class Match {
       this.pieces.delete(id);
       this.pieceKeys.delete(pc.key);
       this.events.push(['pd', id]);
+      // loot that was lying on this piece falls down
+      const bx = pc.box;
+      for (const l of [...this.loot.values()]) {
+        if (l.x < bx.min[0] || l.x > bx.max[0] || l.z < bx.min[2] || l.z > bx.max[2] || l.y < bx.min[1] - 0.1) continue;
+        const y = supportHeight(this.world, l.x, l.y + 0.1, l.z);
+        if (y < l.y - 0.05) { this.loot.delete(l.id); this.events.push(['l-', l.id]); this.dropLoot(l.item, l.x, y, l.z); }
+      }
     } else this.events.push(['ph', id, Math.round(pc.hp)]);
   }
 
@@ -748,6 +776,7 @@ export class Match {
       const z = this.zone, dps = ZONE_PHASES[z.ph].dps;
       for (const p of this.players.values()) {
         if (!p.alive || p.phase === 'blimp') continue;
+        if (this.state !== 'play') break; // the match was just won
         if (Math.hypot(p.x - z.cx, p.z - z.cz) > z.r) {
           p.hp -= dps; p.emote = 0;
           p.pev.push(['storm']);
