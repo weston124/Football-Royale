@@ -26,8 +26,7 @@
         <button id="open-shop">🐂 LONGHORN ITEM SHOP</button>
       </div>
 
-      <label class="lbl">Your name</label>
-      <input id="name" maxlength="16" placeholder="Rookie">
+      <div class="who">Signed in as <b id="me-name">…</b> <button id="logout" class="small">Sign out</button></div>
 
       <label class="lbl">Mode</label>
       <div class="toggle" id="mode">
@@ -99,6 +98,28 @@
       <div id="news"></div>
     </div>
     <div id="touch-warning" class="error hidden">Football Royale needs a keyboard and mouse (computer or laptop).</div>
+  </div>
+
+  <!-- ===== SIGN IN ===== -->
+  <div id="auth" class="screen hidden">
+    <div class="panel auth">
+      <h1 class="logo small-logo">FOOTBALL <span>ROYALE</span></h1>
+      <div class="toggle" id="auth-tabs">
+        <button data-v="login" class="on">Log in</button>
+        <button data-v="signup">Sign up</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <label class="lbl signup-only">Email <small>(private: nobody can see it, not even the admin)</small></label>
+        <input id="a-email" type="email" class="signup-only" autocomplete="email" maxlength="200">
+        <label class="lbl"><span class="signup-only">Username <small>(everyone sees this)</small></span><span class="login-only">Username or email</span></label>
+        <input id="a-user" autocomplete="username" maxlength="200">
+        <label class="lbl">Password <small class="signup-only">(at least 6 characters, keep it secret)</small></label>
+        <input id="a-pass" type="password" autocomplete="current-password" maxlength="200">
+        <label class="signup-only check"><input type="checkbox" id="a-age"> I am 13 or older, or my parent said it's OK</label>
+        <button type="submit" class="big" id="a-go">LOG IN</button>
+      </form>
+      <div id="auth-error" class="error"></div>
+    </div>
   </div>
 
   <!-- ===== LOBBY ===== -->

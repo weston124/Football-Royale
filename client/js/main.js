@@ -26,7 +26,7 @@ profile.skin = sanitizeSkin(profile.skin || { preset: 'llamas', number: Math.flo
 const settings = { sens: store.get('fr_sens', 1) };
 let account = { bucks: 0, owned: [], stats: { wins: 0, kills: 0, matches: 0 } }; // from the server
 const stats = () => account.stats;
-const hello = () => ({ t: 'hello', token: store.get('fr_token', null), name: profile.name, skin: profile.skin });
+const hello = () => ({ t: 'hello', token: store.get('fr_session', null), skin: profile.skin });
 const saveProfile = () => { store.set('fr_profile', profile); net.send(hello()); };
 
 // ---------- network ----------
@@ -142,8 +142,42 @@ function renderStats() {
 }
 
 // ---------- menu controls ----------
-$('name').value = profile.name;
-$('name').onchange = () => { profile.name = $('name').value.trim().slice(0, 16); saveProfile(); };
+// ---------- sign in / sign up ----------
+let authMode = 'login', signedIn = false;
+function setAuthMode(m) {
+  authMode = m;
+  $('auth').className = `screen mode-${m}`;
+  [...$('auth-tabs').children].forEach((b) => b.classList.toggle('on', b.dataset.v === m));
+  $('a-go').textContent = m === 'login' ? 'LOG IN' : 'CREATE ACCOUNT';
+  $('a-pass').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+  $('auth-error').textContent = '';
+}
+$('auth-tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) setAuthMode(b.dataset.v); };
+$('auth-form').onsubmit = (e) => {
+  e.preventDefault();
+  initAudio();
+  $('auth-error').textContent = '';
+  if (authMode === 'login') net.send({ t: 'login', login: $('a-user').value, password: $('a-pass').value });
+  else net.send({ t: 'signup', email: $('a-email').value, username: $('a-user').value, password: $('a-pass').value, ageOk: $('a-age').checked });
+};
+net.on('auth_needed', () => {
+  signedIn = false;
+  store.set('fr_session', null);
+  if (game) { game.destroy(); game = null; }
+  for (const id of ['menu', 'lobby', 'loading', 'shop']) $(id).classList.add('hidden');
+  setAuthMode(authMode);
+  $('auth').classList.remove('hidden');
+});
+net.on('auth', (m) => {
+  store.set('fr_session', m.token);
+  $('a-pass').value = '';
+  $('auth').classList.add('hidden');
+  signedIn = true;
+  showScreen('menu');
+  net.send(hello());
+});
+net.on('auth_error', (m) => { $('auth-error').textContent = m.msg; });
+$('logout').onclick = () => { net.send({ t: 'logout' }); };
 $('sens').value = settings.sens;
 $('sens').oninput = () => { settings.sens = +$('sens').value; store.set('fr_sens', settings.sens); };
 const setMode = (m) => { profile.mode = m; [...$('mode').children].forEach((b) => b.classList.toggle('on', b.dataset.v === m)); };
@@ -152,11 +186,9 @@ $('mode').onclick = (e) => { const b = e.target.closest('button'); if (b) { setM
 
 function join(extra) {
   initAudio();
-  profile.name = $('name').value.trim().slice(0, 16) || `Rookie${Math.floor(Math.random() * 900 + 100)}`;
-  $('name').value = profile.name;
   saveProfile();
   $('menu-error').textContent = '';
-  net.send({ t: 'join', name: profile.name, skin: profile.skin, mode: profile.mode, ...extra });
+  net.send({ t: 'join', skin: profile.skin, mode: profile.mode, ...extra });
 }
 $('quick').onclick = () => join({});
 $('create').onclick = () => join({ create: true, difficulty: $('difficulty').value });
@@ -306,7 +338,8 @@ function confettiLoop(t) {
 
 // ---------- Ball Bucks & the Longhorn Item Shop ----------
 net.on('profile', (m) => {
-  store.set('fr_token', m.token);
+  $('me-name').textContent = m.username;
+  if (!signedIn) { signedIn = true; $('auth').classList.add('hidden'); if (!game && $('lobby').classList.contains('hidden')) showScreen('menu'); }
   account = { bucks: m.bucks, owned: m.owned, stats: m.stats };
   $('bucks').textContent = m.bucks.toLocaleString();
   $('shop-bucks').textContent = m.bucks.toLocaleString();
@@ -393,5 +426,5 @@ window.__fr = { get game() { return game; } };
 if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) $('touch-warning').classList.remove('hidden');
 renderStats();
 refreshPreview();
-showScreen('menu');
+showScreen('loading');
 net.connect();

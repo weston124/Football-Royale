@@ -4,7 +4,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createProfiles } from '../server/profiles.js';
+import { createAccounts } from '../server/accounts.js';
 import { sanitizeSkin, canUseEmote, SHOP, BUCKS } from '../shared/skins.js';
 import { Match } from '../server/match.js';
 
@@ -13,17 +13,15 @@ test('shop only sells Longhorn items', () => {
   for (const i of SHOP) assert.ok(/Longhorn|horn|Stampede|Lasso|Bull/.test(i.name), i.name);
 });
 
-test('buying spends Ball Bucks and unlocks the item', () => {
-  const pr = createProfiles(fs.mkdtempSync(path.join(os.tmpdir(), 'fr-')));
-  const { token, profile } = pr.login(null);
-  assert.equal(profile.bucks, 0);
-  assert.match(pr.buy(profile, 'lh_golden'), /more Ball Bucks/);
-  pr.award(profile, 2500);
-  assert.equal(pr.buy(profile, 'lh_golden'), null);
-  assert.equal(profile.bucks, 500);
-  assert.match(pr.buy(profile, 'lh_golden'), /already own/);
-  assert.equal(pr.login(token).profile, profile, 'same token, same profile');
-  assert.notEqual(pr.login('not-a-real-token').profile, profile);
+test('buying spends Ball Bucks and unlocks the item', async () => {
+  const ac = createAccounts(fs.mkdtempSync(path.join(os.tmpdir(), 'fr-')));
+  const { user } = await ac.signup({ email: 'a@b.co', username: 'Buyer', password: 'secret1', ageOk: true }, 'ip');
+  assert.equal(user.bucks, 0);
+  assert.match(ac.buy(user, 'lh_golden'), /more Ball Bucks/);
+  ac.award(user, 2500);
+  assert.equal(ac.buy(user, 'lh_golden'), null);
+  assert.equal(user.bucks, 500);
+  assert.match(ac.buy(user, 'lh_golden'), /already own/);
 });
 
 test('you cannot wear or emote with items you do not own', () => {

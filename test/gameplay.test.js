@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';
 import WebSocket from 'ws';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { World, stepFalling, stepPlayer } from '../shared/physics.js';
 import { generateMap } from '../shared/map.js';
 
@@ -10,7 +13,8 @@ const PORT = 3999;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
-  const srv = spawn('node', ['server/index.js'], { env: { ...process.env, PORT, ADMIN_PASSWORD: 'x' }, stdio: 'ignore' });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fr-root-'));
+  const srv = spawn('node', ['server/index.js'], { env: { ...process.env, PORT, ADMIN_PASSWORD: 'x', FR_DATA_DIR: tmp }, stdio: 'ignore' });
   await wait(900);
   try {
     const map = generateMap();
@@ -20,6 +24,7 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
     const st = { me: null, loot: new Map(), ents: new Map(), pieces: 0, hits: 0, corr: null, started: null };
     ws.on('message', (raw) => {
       const m = JSON.parse(raw);
+      if (m.t === 'auth') st.authed = true;
       if (m.t === 'lobby' && !st.lobby) { st.lobby = true; ws.send(JSON.stringify({ t: 'start' })); }
       if (m.t === 'start') { st.started = m; for (const l of m.loot) st.loot.set(l[0], l); }
       if (m.t !== 's') return;
@@ -36,7 +41,9 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
       }
     });
     await new Promise((r) => ws.on('open', r));
-    ws.send(JSON.stringify({ t: 'join', name: 'Tester', create: true, mode: 'build', difficulty: 'easy' }));
+    ws.send(JSON.stringify({ t: 'signup', email: 'tester@example.com', username: 'Tester', password: 'testing123', ageOk: true }));
+    while (!st.authed) await wait(50);
+    ws.send(JSON.stringify({ t: 'join', create: true, mode: 'build', difficulty: 'easy' }));
     while (!st.started) await wait(50);
     await wait(2500);
     ws.send(JSON.stringify({ t: 'jump' }));

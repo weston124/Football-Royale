@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export function createAdmin({ root, hub }) {
-  const dataDir = path.join(root, 'data');
+  const dataDir = process.env.FR_DATA_DIR || path.join(root, 'data');
   const file = path.join(dataDir, 'admin.json');
   let data = { news: [], events: [] };
   try { data = { ...data, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch { /* first run */ }

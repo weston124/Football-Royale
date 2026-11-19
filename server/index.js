@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Match } from './match.js';
 import { createAdmin } from './admin.js';
-import { createProfiles } from './profiles.js';
+import { createAccounts } from './accounts.js';
 import { MAX_PLAYERS } from '../shared/constants.js';
 import { sanitizeSkin } from '../shared/skins.js';
 
@@ -23,7 +23,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 
 // ---------- the hub: everyone connected, rooms and parties ----------
 const clients = new Set();   // { ws, name, skin, match, player, party, profile }
-const profiles = createProfiles(ROOT);
+const accounts = createAccounts(ROOT);
 const rooms = new Map();     // code -> Match
 const parties = new Map();   // code -> { code, leader, members:Set }
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -44,11 +44,11 @@ function createMatch(opts) {
   return m;
 }
 function sendProfile(c) {
-  if (c.profile) send(c, { t: 'profile', token: c.token, ...profiles.publicView(c.profile) });
+  if (c.profile) send(c, { t: 'profile', ...accounts.publicView(c.profile) });
 }
 // Ball Bucks earned in a match
 function onReward(player, bucks, why, stat) {
-  profiles.award(player.profile, bucks, stat);
+  accounts.award(player.profile, bucks, stat);
   for (const c of clients) if (c.profile === player.profile) { send(c, { t: 'reward', bucks, why, total: c.profile.bucks }); sendProfile(c); }
 }
 const send = (c, obj) => { if (c.ws.readyState === 1) c.ws.send(typeof obj === 'string' ? obj : JSON.stringify(obj)); };
@@ -61,19 +61,19 @@ const hub = {
       matches: [...rooms.values()].map((m) => ({ code: m.code, kind: m.kind, mode: m.mode, state: m.state, humans: m.humans.length, alive: m.state === 'play' ? m.alive.length : null })),
       parties: parties.size,
       players: [...clients].filter((c) => c.profile).map((c) => ({ name: c.name, bucks: c.profile.bucks, inMatch: !!c.match })),
-      profiles: profiles.count(),
+      profiles: accounts.count(),
+      accounts: accounts.adminList(),
     };
   },
   gift(name, amount) {
-    let n = 0;
-    for (const c of clients) {
-      if (!c.profile || (name !== '*' && c.name !== name)) continue;
-      profiles.award(c.profile, amount);
-      send(c, { t: 'reward', bucks: amount, why: 'a gift from the admin 🎁', total: c.profile.bucks });
-      sendProfile(c);
-      n++;
+    const targets = new Set();
+    if (name === '*') { for (const c of clients) if (c.profile) targets.add(c.profile); }
+    else { const u = accounts.findByUsername(name); if (u) targets.add(u); } // works even if they're offline
+    for (const u of targets) {
+      accounts.award(u, amount);
+      for (const c of clients) if (c.profile === u) { send(c, { t: 'reward', bucks: amount, why: 'a gift from the admin 🎁', total: u.bucks }); sendProfile(c); }
     }
-    return n;
+    return targets.size;
   },
   broadcast(text, style = 'info') {
     const msg = JSON.stringify({ t: 'bc', text, style });
@@ -145,11 +145,11 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404); res.end('Not found');
 });
 
-const cleanName = (n) => String(n || '').replace(/[^\w \-!.?]/g, '').trim().slice(0, 16) || 'Rookie';
 const err = (c, msg) => send(c, { t: 'error', msg });
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
   const c = { ws, name: 'Rookie', skin: sanitizeSkin(null), match: null, player: null, party: null };
   clients.add(c);
   send(c, { t: 'info', ...admin.publicInfo() });
@@ -173,20 +173,37 @@ wss.on('connection', (ws) => {
       return c.match.handle(c.player, m);
     }
 
+    if (!c.profile && !['hello', 'signup', 'login'].includes(m.t)) return send(c, { t: 'auth_needed' });
     switch (m.t) {
+      // ---------- sign in ----------
       case 'hello': {
-        if (!c.profile || (m.token && m.token !== c.token)) {
-          const { token, profile } = profiles.login(m.token);
-          c.token = token; c.profile = profile;
+        if (!c.profile && m.token) {
+          const u = accounts.resume(m.token);
+          if (u) { c.profile = u; c.token = m.token; c.name = u.username; }
         }
-        c.name = cleanName(m.name); c.profile.name = c.name;
+        if (!c.profile) return send(c, { t: 'auth_needed' });
         c.skin = sanitizeSkin(m.skin, c.profile);
         sendProfile(c);
         if (c.party) pushParty(c.party);
         return;
       }
+      case 'signup': case 'login': {
+        if (c.profile) return;
+        (m.t === 'signup' ? accounts.signup(m, ip) : accounts.login(m, ip)).then((r) => {
+          if (r.error) return send(c, { t: 'auth_error', msg: r.error });
+          c.profile = r.user; c.token = r.token; c.name = r.user.username;
+          send(c, { t: 'auth', token: r.token, username: r.user.username });
+          sendProfile(c);
+        }).catch(() => send(c, { t: 'auth_error', msg: 'Something went wrong. Try again.' }));
+        return;
+      }
+      case 'logout': {
+        if (c.token) accounts.logout(c.token);
+        leaveParty(c);
+        c.profile = null; c.token = null; c.name = 'Rookie';
+        return send(c, { t: 'auth_needed' });
+      }
       case 'buy': {
-        if (!c.profile) return;
         const problem = profiles.buy(c.profile, String(m.item || ''));
         if (problem) return err(c, problem);
         send(c, { t: 'bought', item: m.item });
@@ -209,7 +226,7 @@ wss.on('connection', (ws) => {
       }
       case 'party_leave': return leaveParty(c);
       case 'join': {
-        c.name = cleanName(m.name); c.skin = sanitizeSkin(m.skin, c.profile || null);
+        c.skin = sanitizeSkin(m.skin, c.profile);
         const mode = m.mode === 'build' ? 'build' : 'nobuild';
         const party = c.party;
         if (party && party.leader !== c && !m.room) return err(c, 'Only your party leader can start. Or leave the party.');

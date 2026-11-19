@@ -158,3 +158,14 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .packs button { flex: 1; opacity: .5; cursor: not-allowed; }
 #reward { position: fixed; top: 90px; left: 50%; transform: translateX(-50%); z-index: 57; background: rgba(0,0,0,.6); border: 2px solid #ffcc33; border-radius: 20px; padding: 8px 18px; font-weight: 900; font-size: 20px; color: #ffcc33; pointer-events: none; animation: drop .3s ease-out; }
 @media (max-width: 700px) { .shop-foot { grid-template-columns: 1fr; } }
+
+/* ===== sign in ===== */
+.who { background: rgba(0,0,0,.28); border-radius: 10px; padding: 8px 12px; display: flex; gap: 8px; align-items: center; }
+.who b { color: #ffcc33; flex: 1; }
+#auth { background: radial-gradient(ellipse at 50% 30%, #2c5bbf 0%, #12224a 60%, #0a1226 100%); z-index: 40; }
+.panel.auth { text-align: left; width: 400px; }
+.panel.auth form { display: flex; flex-direction: column; gap: 8px; }
+.small-logo { font-size: 40px; text-align: center; }
+.panel.auth small { text-transform: none; letter-spacing: 0; opacity: .8; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+#auth.mode-login .signup-only, #auth.mode-signup .login-only { display: none; }
