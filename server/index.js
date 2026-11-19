@@ -94,6 +94,39 @@ const hub = {
     for (const c of clients) send(c, msg);
     return m.code;
   },
+  setAdmin(username, on) {
+    const u = accounts.setAdmin(username, on);
+    if (u) for (const c of clients) if (c.profile === u) sendProfile(c);
+    return u;
+  },
+  // in-game admin drop-down (only for accounts marked as admin)
+  adminAction(c, m) {
+    if (!c.profile || !c.profile.isAdmin) return;
+    const reply = (msg, ok = true) => send(c, { t: 'admin_ok', msg, ok });
+    const text = (v, n) => String(v || '').slice(0, n).trim();
+    switch (m.action) {
+      case 'party': {
+        const code = hub.globalParty(m.kind === 'island' ? 'island' : 'royale', text(m.title, 80) || 'GLOBAL PARTY!');
+        return reply(`🎉 Party started! Code ${code}`);
+      }
+      case 'endparty': hub.endParties(); return reply('Parties ended.');
+      case 'broadcast': {
+        const t = text(m.text, 200);
+        if (!t) return reply('Type a message first', false);
+        return reply(`📢 Sent to ${hub.broadcast(t, ['info', 'alert', 'hype'].includes(m.style) ? m.style : 'info')} players`);
+      }
+      case 'gift': {
+        const amount = Math.round(Number(m.amount));
+        if (!Number.isFinite(amount) || amount < 1 || amount > 100000) return reply('Pick an amount from 1 to 100,000', false);
+        const n = hub.gift(m.name === '*' ? '*' : text(m.name, 16), amount);
+        return n ? reply(`🎁 Gifted ${amount} Ball Bucks to ${n} player${n === 1 ? '' : 's'}`) : reply('No player with that username', false);
+      }
+      case 'stats': {
+        const st = hub.stats();
+        return reply(`${st.online} online · ${st.inMatch} in matches · ${st.matches.length} matches · ${st.profiles} accounts`);
+      }
+    }
+  },
   endParties() {
     for (const m of [...rooms.values()]) if (m.kind !== 'normal' && (m.kind === 'island' || m.state === 'lobby')) m.close();
     hub.broadcast('🎉 The party is over. Thanks for coming!', 'info');
@@ -170,6 +203,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
       if (m.t === 'ping') return send(c, { t: 'pong', c: m.c });
+      if (m.t === 'admin') return hub.adminAction(c, m);
       return c.match.handle(c.player, m);
     }
 
@@ -225,6 +259,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
       case 'party_leave': return leaveParty(c);
+      case 'admin': return hub.adminAction(c, m);
       case 'join': {
         c.skin = sanitizeSkin(m.skin, c.profile);
         const mode = m.mode === 'build' ? 'build' : 'nobuild';

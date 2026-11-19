@@ -169,3 +169,16 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .panel.auth small { text-transform: none; letter-spacing: 0; opacity: .8; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 #auth.mode-login .signup-only, #auth.mode-signup .login-only { display: none; }
+
+/* ===== in-game admin drop-down ===== */
+#admin-menu { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 61; display: flex; flex-direction: column; align-items: center; }
+#admin-toggle { background: linear-gradient(90deg, #ffcc33, #ff8a3d); padding: 6px 14px; font-size: 14px; }
+#admin-drop { margin-top: 6px; width: 320px; background: rgba(12, 20, 46, .96); border: 2px solid #ffcc33; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+.ad-sec { display: flex; flex-direction: column; gap: 6px; }
+.ad-row { display: flex; gap: 6px; align-items: center; } .ad-row > * { flex: 1; min-width: 0; }
+#admin-drop button { padding: 7px 8px; font-size: 13px; }
+#admin-drop input, #admin-drop select { padding: 6px 8px; font-size: 13px; }
+#admin-drop .ad-ghost { background: #2a3c6a; color: #fff; box-shadow: none; }
+.ad-link { color: #ffcc33; font-size: 13px; text-align: right; }
+#ad-status { font-size: 13px; font-weight: 700; color: #7dff9a; min-height: 16px; }
+#ad-status.err { color: #ff8080; }

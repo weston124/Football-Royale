@@ -9,6 +9,8 @@ const USERNAME = /^[A-Za-z0-9_]{3,16}$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
 const BLOCKED = ['fuck', 'shit', 'bitch', 'cunt', 'nigg', 'fag', 'slut', 'whore', 'dick', 'pussy', 'penis', 'vagina', 'rape', 'nazi', 'hitler', 'porn', 'sex', 'admin', 'moderator'];
 const SESSION_DAYS = 30;
+// Usernames listed in the ADMIN_USERS setting (comma separated) are admins automatically
+const ADMIN_USERS = String(process.env.ADMIN_USERS || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
 
 export function createAccounts(root) {
   const dir = process.env.FR_DATA_DIR || path.join(root, 'data');
@@ -64,6 +66,7 @@ export function createAccounts(root) {
         emailHash: emailHash(email), salt, pwHash: await hashPw(password, salt), created: Date.now(),
         bucks: 0, owned: [], stats: { wins: 0, kills: 0, matches: 0 },
       };
+      if (ADMIN_USERS.includes(user.usernameLower)) user.isAdmin = true;
       db.users[user.id] = user;
       return { user, token: newSession(user) };
     },
@@ -75,6 +78,7 @@ export function createAccounts(root) {
       const ok = user && crypto.timingSafeEqual(Buffer.from(await hashPw(password, user.salt), 'hex'), Buffer.from(user.pwHash, 'hex'));
       if (!ok) { fail(key); fail('ip:' + ip); return { error: 'Wrong username/email or password.' }; }
       fails.delete(key);
+      if (ADMIN_USERS.includes(user.usernameLower)) user.isAdmin = true;
       return { user, token: newSession(user) };
     },
     resume(token) {
@@ -83,7 +87,8 @@ export function createAccounts(root) {
       return db.users[s.id] || null;
     },
     logout(token) { delete db.sessions[tokenHash(token)]; save(); },
-    publicView(u) { return { username: u.username, bucks: u.bucks, owned: u.owned, stats: u.stats }; },
+    publicView(u) { return { username: u.username, bucks: u.bucks, owned: u.owned, stats: u.stats, isAdmin: !!u.isAdmin }; },
+    setAdmin(username, on) { const u = byUsername(username); if (!u) return false; u.isAdmin = !!on; save(); return u; },
     award(u, amount, stat) {
       if (!u) return;
       u.bucks = Math.max(0, u.bucks + Math.round(amount));
@@ -103,7 +108,7 @@ export function createAccounts(root) {
     findByUsername: byUsername,
     // Admin view: usernames and game info ONLY (never emails or passwords)
     adminList() {
-      return Object.values(db.users).map((u) => ({ username: u.username, bucks: u.bucks, wins: u.stats.wins, kills: u.stats.kills, created: u.created }))
+      return Object.values(db.users).map((u) => ({ username: u.username, bucks: u.bucks, wins: u.stats.wins, kills: u.stats.kills, created: u.created, isAdmin: !!u.isAdmin }))
         .sort((a, b) => b.created - a.created);
     },
     count() { return Object.keys(db.users).length; },

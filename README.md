@@ -16,6 +16,12 @@ Friends just open a link. Nothing to download.
 - **Emotes**: Gridiron Shuffle, Touchdown Spike, Victory Dance, Helmet Salute, Ref Signals
 - **Squads**: make a party with a code. Up to 4 friends drop into the same match as teammates.
 - **Private rooms** with a 4-letter code and an invite link
+- **Accounts**: sign up with email (stored only as a one-way hash, so nobody can read it),
+  username (public) and password (scrypt hash). Ball Bucks and items follow your account.
+- **👑 In-game admin drop-down** for admin accounts: parties, messages and gifts without leaving the game
+- **Realistic players** built on the MakeHuman base body (CC0) with a skeleton, loose jersey over pads,
+  tinted visor, gloves and cleats
+- **Longhorn Item Shop** and **Ball Bucks** (earned by playing; real-money buying is turned off)
 - **Admin panel** at `/admin`: post updates, message every player, schedule parties,
   and the **GLOBAL PARTY 🎉** button (Party Royale with double loot, or Party Island hangout)
 
@@ -37,7 +43,8 @@ Open http://localhost:3000 to play and http://localhost:3000/admin for the admin
 1. Push this folder to a GitHub repository.
 2. On https://render.com, create a **New → Web Service** from that repo.
 3. Build command: `npm install`. Start command: `npm start`. Instance type: **Free**.
-4. Under **Environment**, add `ADMIN_PASSWORD` with a secret only you know.
+4. Under **Environment**, add `ADMIN_PASSWORD` with a secret only you know, and
+   `ADMIN_USERS` with your in-game username (this gives you the 👑 Admin drop-down in the game).
 5. Share the `https://<your-app>.onrender.com` link with friends!
 
 Notes on the free plan: the server falls asleep after ~15 minutes with nobody playing
@@ -60,6 +67,10 @@ npm test
 See `DESIGN_PROMPT.md` for the full design and ideas for version 2.
 
 ## Credits
+The realistic human body, skeleton and skin weights come from the MakeHuman project
+(https://github.com/makehumancommunity/makehuman, assets released as CC0 1.0).
+`tools/build_human.py` converts them into `client/assets/human.*`.
+
 Built with [three.js](https://threejs.org) (MIT) and [ws](https://github.com/websockets/ws) (MIT).
 All art is drawn from code, and all sounds are generated in the browser. No outside assets.
 The architecture was inspired by open-source browser shooters such as Neon Doom Pit (MIT)

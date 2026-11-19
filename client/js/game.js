@@ -108,6 +108,7 @@ export class Game {
     const c = this.renderer.domElement;
     this.h = {
       keydown: (e) => {
+        if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
         if (e.code === 'Tab') e.preventDefault();
         if (e.repeat) return;
         this.keys.add(e.code);
@@ -121,6 +122,7 @@ export class Game {
         this.pitch = clamp(this.pitch - e.movementY * s, -1.5, 1.5);
       },
       mousedown: (e) => {
+        if (e.target && e.target.closest && e.target.closest('#admin-menu, #party-pop, #shop')) return;
         if (document.pointerLockElement !== c) { if (!this.dead && !this.emoteMenu) c.requestPointerLock(); return; }
         if (e.button === 0) { this.mouse.left = true; this.mouse.leftEdge = true; if (this.dead) this.cycleSpectate(); }
         if (e.button === 2) this.mouse.right = true;

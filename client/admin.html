@@ -78,7 +78,7 @@
 
     <section class="card">
       <h2>👥 Players (<span id="acct-count">0</span>)</h2>
-      <p style="margin:0;color:var(--muted);font-size:13px">Usernames only. Emails and passwords are locked away and can't be seen by anyone.</p>
+      <p style="margin:0;color:var(--muted);font-size:13px">Usernames only. Emails and passwords are locked away and can't be seen by anyone. 👑 Admins get a drop-down menu inside the game to run parties, messages and gifts.</p>
       <input id="acct-search" placeholder="Search usernames…">
       <div class="list" id="acct-list"></div>
     </section>
@@ -139,7 +139,7 @@
       const q = $('acct-search').value.trim().toLowerCase();
       $('acct-count').textContent = lastAccounts.length;
       $('acct-list').innerHTML = lastAccounts.filter((a) => a.username.toLowerCase().includes(q)).slice(0, 200).map((a) =>
-        `<div class="item"><span>${lastOnline.has(a.username) ? '🟢' : '⚪'} <b>${esc(a.username)}</b></span><small>🏈 ${a.bucks} · 🏆 ${a.wins} · elims ${a.kills} · joined ${new Date(a.created).toLocaleDateString()}</small></div>`).join('') || '<small style="color:var(--muted)">No players yet.</small>';
+        `<div class="item"><span>${lastOnline.has(a.username) ? '🟢' : '⚪'} <b>${esc(a.username)}</b>${a.isAdmin ? ' 👑' : ''}<br><small>🏈 ${a.bucks} · 🏆 ${a.wins} · elims ${a.kills} · joined ${new Date(a.created).toLocaleDateString()}</small></span><button class="ghost" style="flex:0;white-space:nowrap" data-admin="${esc(a.username)}" data-on="${a.isAdmin ? 0 : 1}">${a.isAdmin ? 'Remove admin' : '👑 Make admin'}</button></div>`).join('') || '<small style="color:var(--muted)">No players yet.</small>';
     }
 
     async function api(action, body) {
@@ -197,6 +197,12 @@
       catch (e) { if (e.message !== 'auth') flash('gift-msg', e.message, true); }
     }
     $('acct-search').oninput = renderAccounts;
+    $('acct-list').onclick = async (e) => {
+      const b = e.target.closest('button[data-admin]'); if (!b) return;
+      const on = b.dataset.on === '1';
+      if (!confirm(on ? `Give ${b.dataset.admin} the in-game admin menu?` : `Remove admin from ${b.dataset.admin}?`)) return;
+      try { await api('setadmin', { username: b.dataset.admin, on }); refresh(); } catch (err) { if (err.message !== 'auth') alert(err.message); }
+    };
     $('gift-btn').onclick = () => gift($('gift-who').value);
     $('gift-all').onclick = () => { if (confirm('Gift every player online?')) gift('*'); };
     $('bc-style').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; bcStyle = b.dataset.v; [...$('bc-style').children].forEach((x) => x.classList.toggle('on', x === b)); };

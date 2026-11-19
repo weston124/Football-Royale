@@ -177,7 +177,23 @@ net.on('auth', (m) => {
   net.send(hello());
 });
 net.on('auth_error', (m) => { $('auth-error').textContent = m.msg; });
-$('logout').onclick = () => { net.send({ t: 'logout' }); };
+$('logout').onclick = () => { net.send({ t: 'logout' }); $('admin-menu').classList.add('hidden'); };
+
+// ---------- in-game admin drop-down ----------
+$('admin-toggle').onclick = () => {
+  const open = $('admin-drop').classList.toggle('hidden') === false;
+  if (open) document.exitPointerLock?.();
+};
+$('admin-drop').onclick = (e) => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'royale' || act === 'island') net.send({ t: 'admin', action: 'party', kind: act, title: $('ad-title').value });
+  else if (act === 'endparty') { if (confirm('End all parties?')) net.send({ t: 'admin', action: 'endparty' }); }
+  else if (act === 'broadcast') { net.send({ t: 'admin', action: 'broadcast', text: $('ad-msg').value, style: $('ad-style').value }); $('ad-msg').value = ''; }
+  else if (act === 'gift') net.send({ t: 'admin', action: 'gift', name: $('ad-user').value.trim(), amount: +$('ad-amt').value });
+  else if (act === 'stats') net.send({ t: 'admin', action: 'stats' });
+};
+net.on('admin_ok', (m) => { $('ad-status').textContent = m.msg; $('ad-status').className = m.ok ? '' : 'err'; });
 $('sens').value = settings.sens;
 $('sens').oninput = () => { settings.sens = +$('sens').value; store.set('fr_sens', settings.sens); };
 const setMode = (m) => { profile.mode = m; [...$('mode').children].forEach((b) => b.classList.toggle('on', b.dataset.v === m)); };
@@ -338,7 +354,8 @@ function confettiLoop(t) {
 
 // ---------- Ball Bucks & the Longhorn Item Shop ----------
 net.on('profile', (m) => {
-  $('me-name').textContent = m.username;
+  $('me-name').textContent = m.username + (m.isAdmin ? ' 👑' : '');
+  $('admin-menu').classList.toggle('hidden', !m.isAdmin);
   if (!signedIn) { signedIn = true; $('auth').classList.add('hidden'); if (!game && $('lobby').classList.contains('hidden')) showScreen('menu'); }
   account = { bucks: m.bucks, owned: m.owned, stats: m.stats };
   $('bucks').textContent = m.bucks.toLocaleString();

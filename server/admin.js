@@ -114,6 +114,11 @@ export function createAdmin({ root, hub }) {
         if (!n) return json(400, { error: 'That player is not online right now' });
         return json(200, { ok: true, sent: n });
       }
+      case 'setadmin': {
+        const u = hub.setAdmin(clean(b.username, 16), !!b.on);
+        if (!u) return json(400, { error: 'No player with that username' });
+        return json(200, { ok: true });
+      }
       case 'endparty': hub.endParties(); return json(200, { ok: true });
       default: return json(404, { error: 'Unknown action' });
     }

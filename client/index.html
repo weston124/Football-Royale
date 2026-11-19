@@ -227,6 +227,31 @@
 
   <div id="loading" class="screen hidden"><div class="panel"><h2>Loading the Giant Sports City…</h2></div></div>
 
+  <!-- in-game admin drop-down (only shows for admin accounts) -->
+  <div id="admin-menu" class="hidden">
+    <button id="admin-toggle">👑 Admin ▾</button>
+    <div id="admin-drop" class="hidden">
+      <div class="ad-sec">
+        <b>🎉 Parties</b>
+        <input id="ad-title" placeholder="Party name (optional)" maxlength="80">
+        <div class="ad-row"><button data-act="royale">🏈 Party Royale</button><button data-act="island">🏝️ Party Island</button></div>
+        <button data-act="endparty" class="ad-ghost">End all parties</button>
+      </div>
+      <div class="ad-sec">
+        <b>📢 Message everyone</b>
+        <input id="ad-msg" placeholder="Type a message…" maxlength="200">
+        <div class="ad-row"><select id="ad-style"><option value="info">📢 Info</option><option value="alert">⚠️ Alert</option><option value="hype">🔥 Hype</option></select><button data-act="broadcast">Send</button></div>
+      </div>
+      <div class="ad-sec">
+        <b>🏈 Gift Ball Bucks</b>
+        <div class="ad-row"><input id="ad-user" placeholder="Username (* = everyone online)" maxlength="16"><input id="ad-amt" type="number" value="500" min="1" max="100000" style="max-width:80px"></div>
+        <button data-act="gift">🎁 Gift</button>
+      </div>
+      <div class="ad-row"><button data-act="stats" class="ad-ghost">📊 Who's online?</button><a href="/admin" target="_blank" class="ad-link">Full admin panel ↗</a></div>
+      <div id="ad-status"></div>
+    </div>
+  </div>
+
   <!-- broadcasts & parties (show everywhere) -->
   <div id="banner" class="hidden"></div>
   <div id="party-pop" class="hidden">
