@@ -51,16 +51,16 @@ export const BOT_DIFFICULTY = {
     build: 0.15, buildCooldown: 4, rampChance: 0, nade: 0.1, rotateEarly: 0, matsWanted: 30,
   },
   normal: {
-    aimError: 0.13, react: 0.95, fireMul: 0.55, sight: 70, glideSight: 25, hearing: 14, fov: 1.5, turn: 6,
+    aimError: 0.15, react: 1.0, fireMul: 0.5, sight: 70, glideSight: 25, hearing: 14, fov: 1.5, turn: 6,
     burst: [1.6, 0.8], warmup: 2, maxOnHuman: 2, aggro: 0.5, healAt: 60, jumpy: 0.15,
     build: 0.45, buildCooldown: 2, rampChance: 0.3, nade: 0.3, rotateEarly: 8, matsWanted: 60,
   },
   hard: {
-    aimError: 0.085, react: 0.6, fireMul: 0.75, sight: 90, glideSight: 50, hearing: 20, fov: 1.9, turn: 8,
-    burst: [2.6, 0.45], warmup: 1.2, maxOnHuman: 3, aggro: 0.65, healAt: 70, jumpy: 0.3,
+    aimError: 0.095, react: 0.65, fireMul: 0.7, sight: 90, glideSight: 50, hearing: 20, fov: 1.9, turn: 8,
+    burst: [2.4, 0.5], warmup: 1.4, maxOnHuman: 2, aggro: 0.65, healAt: 70, jumpy: 0.3,
     build: 0.8, buildCooldown: 1.1, rampChance: 0.5, nade: 0.5, rotateEarly: 18, matsWanted: 100,
   },
 };
 // How bots fight *each other*, whatever the difficulty. Difficulty only changes how bots
 // treat humans; bot-vs-bot fights use this so every match has the same pacing.
-export const BOT_VS_BOT = { aimError: 0.16, react: 1.0, fireMul: 0.5, sight: 36, burst: [1.2, 1.2], warmup: 2.5 };
+export const BOT_VS_BOT = { aimError: 0.16, react: 1.0, fireMul: 0.45, sight: 36, burst: [1.2, 1.2], warmup: 2.5 };

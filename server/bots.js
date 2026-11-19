@@ -180,8 +180,14 @@ function setGoal(ai, x, z, run, kind, extra) {
   ai.goal = { x, z, run, kind, ...extra };
 }
 
+// At most a few path searches per server tick (everyone lands at once); the rest wait a tick.
+function navBudget(match, t) {
+  if (match._navT !== t) { match._navT = t; match._navN = 0; }
+  return match._navN++ < 6;
+}
+
 // Next point to walk to on the way to ai.goal (plans/replans the nav-grid path).
-function waypoint(b, ai, t) {
+function waypoint(match, b, ai, t) {
   const g = ai.goal;
   const N = nav();
   // on a roof or other spot the grid can't see (but not on a build floor we can stand on)?
@@ -196,7 +202,7 @@ function waypoint(b, ai, t) {
     const far = Math.hypot(g.x - b.x, g.z - b.z);
     if (!ai.path || moved || t - ai.pathAt > (ai.path.complete ? 8 : 3) || ai.pathI >= ai.path.length) {
       if (far < 2) { ai.path = null; wx = g.x; wz = g.z; }
-      else if (t - ai.pathAt > 0.6 || moved) {
+      else if ((t - ai.pathAt > 0.6 || moved) && navBudget(match, t)) {
         // long trips are planned in chunks
         let tx = g.x, tz = g.z;
         if (far > 140) { tx = b.x + (g.x - b.x) * 140 / far; tz = b.z + (g.z - b.z) * 140 / far; }
@@ -227,7 +233,7 @@ function waypoint(b, ai, t) {
 function followPath(match, b, ai, t, input) {
   const g = ai.goal;
   if (!g) return false;
-  const [wx, wz] = waypoint(b, ai, t);
+  const [wx, wz] = waypoint(match, b, ai, t);
   const d = Math.hypot(wx - b.x, wz - b.z);
   let want = yawTo(wx - b.x, wz - b.z);
   if (t < ai.unstickUntil) want = ai.unstickYaw;
@@ -556,7 +562,7 @@ function fight(match, b, ai, D, t, enemy, cur, d, input) {
     // keep shooting while moving to cover / out of the storm
     const g = ai.goal;
     if (g) {
-      const [wx, wz] = waypoint(b, ai, t);
+      const [wx, wz] = waypoint(match, b, ai, t);
       const mx = wx - b.x, mz = wz - b.z, L = Math.hypot(mx, mz);
       if (L > 0.8) {
         const sin = Math.sin(b.yaw), cos = Math.cos(b.yaw);
