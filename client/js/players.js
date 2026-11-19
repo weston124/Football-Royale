@@ -127,9 +127,13 @@ export class PlayerRenderer {
     }
     // apply
     for (const c of Object.values(this.crowds)) c.begin();
-    let ns = 0, models = 0;
+    let ns = 0, models = 0, built = 0;
     for (const e of ents.values()) {
-      const lv = e.want;
+      let lv = e.want;
+      // build at most 3 new models (or new detail levels) per frame so turning around never hitches;
+      // the rest show as crowd for a frame or two
+      if ((lv === 'full' || lv === 'mid') && (!e.model || e.level !== lv) && e.id !== focusId && built >= 3) lv = e.s && e.s.ph !== 3 ? 'crowd' : 'none';
+      if ((lv === 'full' || lv === 'mid') && (!e.model || e.level !== lv)) built++;
       if (lv === 'full' || lv === 'mid') {
         if (!e.model) e.model = createPlayer(e.skin, { detail: 'lazy', shadow: false });
         const u = e.model.userData;
