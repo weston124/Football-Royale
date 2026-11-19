@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { SHOP } from '../shared/skins.js';
+import { loadJson, jsonStore, writeFileAtomic } from './safefile.js';
 
 const USERNAME = /^[A-Za-z0-9_]+( [A-Za-z0-9_]+)*$/; // single spaces between words are OK
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
@@ -19,24 +20,42 @@ export function createAccounts(root) {
   // secret "pepper" mixed into email hashes so they can't be looked up
   const pepperFile = path.join(dir, 'email-pepper.key');
   let pepper = process.env.EMAIL_PEPPER;
+  const loaded = loadJson(file, { validate: (d) => d && typeof d === 'object' && d.users && typeof d.users === 'object' });
+  let db = { users: {}, sessions: {}, ...(loaded.data || {}) };
   if (!pepper) {
-    try { pepper = fs.readFileSync(pepperFile, 'utf8').trim(); } catch { pepper = crypto.randomBytes(32).toString('hex'); fs.writeFileSync(pepperFile, pepper, { mode: 0o600 }); }
+    try { pepper = fs.readFileSync(pepperFile, 'utf8').trim(); } catch { /* none yet */ }
+    if (!pepper) {
+      if (Object.keys(db.users).length) {
+        console.error(`!!! DATA WARNING: ${pepperFile} is missing but accounts exist. Logging in with an email and the`
+          + ' "email already used" check will not work for existing accounts (usernames still work). Restore the key file if you can.');
+      }
+      pepper = crypto.randomBytes(32).toString('hex');
+      writeFileAtomic(pepperFile, pepper);
+    }
   }
-  let db = { users: {}, sessions: {} };
-  try { db = { ...db, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch { /* first run */ }
-  let saveTimer = null;
-  const save = () => {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try { fs.writeFileSync(file, JSON.stringify(db), { mode: 0o600 }); } catch (e) { console.error('account save failed', e.message); }
-    }, 500);
-  };
+  const store = jsonStore(file, () => db);
+  const save = store.save;
   const emailHash = (e) => crypto.createHmac('sha256', pepper).update(e.trim().toLowerCase()).digest('hex');
   const tokenHash = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
   const hashPw = (pw, salt) => new Promise((res, rej) => crypto.scrypt(pw, salt, 64, { N: 16384, r: 8, p: 1 }, (e, k) => (e ? rej(e) : res(k.toString('hex')))));
   const byUsername = (u) => Object.values(db.users).find((x) => x.usernameLower === String(u).toLowerCase());
   const byEmail = (e) => { const h = emailHash(e); return Object.values(db.users).find((x) => x.emailHash === h); };
   const fails = new Map(); // key -> {n, until}
+  // new accounts per IP: a whole school class can sign up from one IP, so this is generous
+  const SIGNUPS_PER_IP_HOUR = Number(process.env.SIGNUPS_PER_IP_HOUR) || 30;
+  const signups = new Map(); // ip -> [timestamps]
+  const signupAllowed = (ip) => {
+    const t = Date.now(), list = (signups.get(ip) || []).filter((x) => x > t - 3600_000);
+    signups.set(ip, list);
+    if (signups.size > 50_000) signups.clear(); // memory guard
+    return list.length < SIGNUPS_PER_IP_HOUR;
+  };
+  const checkPw = async (user, password) => crypto.timingSafeEqual(Buffer.from(await hashPw(String(password || '').slice(0, 1000), user.salt), 'hex'), Buffer.from(user.pwHash, 'hex'));
+  function removeUser(user) {
+    delete db.users[user.id];
+    for (const [k, s] of Object.entries(db.sessions)) if (s.id === user.id) delete db.sessions[k];
+    store.save(); store.flush(); // deletions are written right away
+  }
   const locked = (k) => { const f = fails.get(k); return f && f.until > Date.now(); };
   const fail = (k) => { const f = fails.get(k) || { n: 0, until: 0 }; f.n++; if (f.n >= 5) { f.until = Date.now() + 60_000; f.n = 0; } fails.set(k, f); };
 
@@ -58,6 +77,7 @@ export function createAccounts(root) {
       if (password.length < 6 || password.length > 200) return { error: 'Passwords need at least 6 characters.' };
       if (password.toLowerCase() === username.toLowerCase()) return { error: 'Your password can not be your username.' };
       if (locked('ip:' + ip)) return { error: 'Too many tries. Wait a minute.' };
+      if (!signupAllowed(ip)) return { error: 'Too many new accounts from this network. Try again later.' };
       if (byUsername(username)) return { error: 'That username is taken.' };
       if (byEmail(email)) { fail('ip:' + ip); return { error: 'That email already has an account. Try logging in.' }; }
       const salt = crypto.randomBytes(16).toString('hex');
@@ -68,14 +88,17 @@ export function createAccounts(root) {
       };
       if (ADMIN_USERS.includes(user.usernameLower)) user.isAdmin = true;
       db.users[user.id] = user;
-      return { user, token: newSession(user) };
+      signups.get(ip)?.push(Date.now());
+      const token = newSession(user);
+      store.flush(); // a brand-new account is written to disk right away
+      return { user, token };
     },
     async login({ login, password }, ip) {
       login = String(login || '').trim(); password = String(password || '');
       const user = login.includes('@') ? byEmail(login) : byUsername(login);
       const key = 'acct:' + (user ? user.id : login.toLowerCase());
       if (locked(key) || locked('ip:' + ip)) return { error: 'Too many wrong tries. Wait a minute and try again.' };
-      const ok = user && crypto.timingSafeEqual(Buffer.from(await hashPw(password, user.salt), 'hex'), Buffer.from(user.pwHash, 'hex'));
+      const ok = user && await checkPw(user, password);
       if (!ok) { fail(key); fail('ip:' + ip); return { error: 'Wrong username/email or password.' }; }
       fails.delete(key);
       if (ADMIN_USERS.includes(user.usernameLower)) user.isAdmin = true;
@@ -107,6 +130,24 @@ export function createAccounts(root) {
       save();
       return null;
     },
+    // the player deletes their own account (needs their password)
+    async deleteAccount(user, password, ip) {
+      if (!user || !db.users[user.id]) return { error: 'No account.' };
+      const key = 'acct:' + user.id;
+      if (locked(key) || locked('ip:' + ip)) return { error: 'Too many wrong tries. Wait a minute and try again.' };
+      if (!(await checkPw(user, password))) { fail(key); fail('ip:' + ip); return { error: 'Wrong password.' }; }
+      if (!db.users[user.id]) return { error: 'No account.' };
+      removeUser(user);
+      return { ok: true };
+    },
+    // admin deletes an account by username
+    adminDelete(username) {
+      const u = byUsername(String(username || '').trim());
+      if (!u) return null;
+      removeUser(u);
+      return u;
+    },
+    flush: () => store.flush(),
     findByUsername: byUsername,
     // Admin view: usernames and game info ONLY (never emails or passwords)
     adminList() {

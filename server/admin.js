@@ -2,36 +2,46 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { loadJson, jsonStore } from './safefile.js';
+import { clientIp } from './net.js';
 
 export function createAdmin({ root, hub }) {
   const dataDir = process.env.FR_DATA_DIR || path.join(root, 'data');
   const file = path.join(dataDir, 'admin.json');
-  let data = { news: [], events: [] };
-  try { data = { ...data, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch { /* first run */ }
+  fs.mkdirSync(dataDir, { recursive: true });
+  const loaded = loadJson(file, { validate: (d) => d && typeof d === 'object' && Array.isArray(d.news || []) && Array.isArray(d.events || []) });
+  let data = { news: [], events: [], ...(loaded.data || {}) };
   if (!data.news.length) {
     data.news.push({ id: 1, title: 'Welcome to Football Royale! 🏈', body: 'Season 1 is live. Drop from the Team Blimp, grab loot and be the last player standing!', date: Date.now() });
   }
-  const save = () => {
-    try { fs.mkdirSync(dataDir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(data, null, 2)); } catch (e) { console.error('save failed', e.message); }
-  };
+  const store = jsonStore(file, () => data, { delay: 50, mode: 0o600, pretty: true });
+  const save = store.save;
 
   let password = process.env.ADMIN_PASSWORD;
   if (!password) {
     password = crypto.randomBytes(5).toString('hex');
     console.log(`\n🔐 No ADMIN_PASSWORD set. Your admin password for this run is: ${password}\n   (Set the ADMIN_PASSWORD environment variable to choose your own.)\n`);
   }
-  const keyBuf = Buffer.from(password);
+  if (password.length < 12) console.warn('⚠️  ADMIN_PASSWORD is short. Use 12+ random characters for a public server.');
+  const keyHash = crypto.createHash('sha256').update(password).digest();
   const fails = new Map(); // ip -> {n, until}
+  // a global brake too, so guessing from many IPs (or faked IP headers) stays slow
+  let globalFails = [], globalUntil = 0;
 
   function authed(req) {
-    const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+    const ip = clientIp(req);
+    const t = Date.now();
     const f = fails.get(ip);
-    if (f && f.until > Date.now()) return 'locked';
-    const given = Buffer.from(String(req.headers['x-admin-key'] || ''));
-    const ok = given.length === keyBuf.length && crypto.timingSafeEqual(given, keyBuf);
+    if ((f && f.until > t) || globalUntil > t) return 'locked';
+    // compare fixed-length hashes so neither the content nor the length of the password leaks
+    const given = crypto.createHash('sha256').update(String(req.headers['x-admin-key'] || '')).digest();
+    const ok = crypto.timingSafeEqual(given, keyHash);
     if (!ok) {
       const n = (f ? f.n : 0) + 1;
-      fails.set(ip, { n, until: n >= 5 ? Date.now() + 60_000 : 0 });
+      fails.set(ip, { n, until: n >= 5 ? t + 60_000 : 0 });
+      if (fails.size > 10_000) fails.clear();
+      globalFails = globalFails.filter((x) => x > t - 15 * 60_000); globalFails.push(t);
+      if (globalFails.length >= 100) { globalUntil = t + 5 * 60_000; globalFails = []; console.warn('⚠️  Many wrong admin passwords: admin API locked for 5 minutes.'); }
     } else fails.delete(ip);
     return ok;
   }
@@ -57,14 +67,15 @@ export function createAdmin({ root, hub }) {
   function readBody(req) {
     return new Promise((resolve) => {
       let body = '';
-      req.on('data', (c) => { body += c; if (body.length > 20000) req.destroy(); });
+      req.on('data', (c) => { body += c; if (body.length > 20000) { req.destroy(); resolve({}); } });
+      req.on('error', () => resolve({}));
       req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch { resolve({}); } });
     });
   }
   const clean = (s, n) => String(s || '').slice(0, n).trim();
 
   async function handle(req, res, url) {
-    const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
     if (url === '/api/info') return json(200, publicInfo());
     if (!url.startsWith('/admin/api/')) return false;
     const a = authed(req);
@@ -120,8 +131,15 @@ export function createAdmin({ root, hub }) {
         return json(200, { ok: true });
       }
       case 'endparty': hub.endParties(); return json(200, { ok: true });
+      case 'deleteuser': {
+        const name = clean(b.username, 16);
+        if (!name || clean(b.confirm, 16).toUpperCase() !== name.toUpperCase()) return json(400, { error: 'Type the username again to confirm' });
+        if (!hub.deleteUser(name)) return json(400, { error: 'No player with that username' });
+        console.log(`admin deleted account ${name.toUpperCase()}`);
+        return json(200, { ok: true });
+      }
       default: return json(404, { error: 'Unknown action' });
     }
   }
-  return { handle, publicInfo };
+  return { handle, publicInfo, flush: () => store.flush() };
 }
