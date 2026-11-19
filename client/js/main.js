@@ -10,7 +10,7 @@ import { drawMapImage } from './world.js';
 import { Hud } from './hud.js';
 import { Game } from './game.js';
 import { createMenuScene } from './menuScene.js';
-import { initAudio, sfx, startPartyMusic } from './audio.js';
+import { initAudio, sfx, startPartyMusic, setVolumes, startMenuMusic, stopMenuMusic } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -24,7 +24,13 @@ const profile = store.get('fr_profile', {});
 profile.name = profile.name || '';
 profile.mode = profile.mode || 'nobuild';
 profile.skin = sanitizeSkin(profile.skin || { preset: 'thunder', number: Math.floor(Math.random() * 99) + 1 });
-const settings = { sens: store.get('fr_sens', 1) };
+// player settings (the Game reads this same object live, so changes apply mid-match)
+const settings = Object.assign(
+  { sens: store.get('fr_sens', 1), fov: 75, invertY: false, showFps: false, master: 0.8, music: 0.5, sfx: 0.9, menuMusic: true },
+  store.get('fr_settings', {}),
+);
+const saveSettings = () => { store.set('fr_settings', settings); store.set('fr_sens', settings.sens); };
+setVolumes({ master: settings.master, music: settings.music, sfx: settings.sfx });
 let account = { bucks: 0, owned: [], stats: { wins: 0, kills: 0, matches: 0 } }; // from the server
 const stats = () => account.stats;
 const hello = () => ({ t: 'hello', token: store.get('fr_session', null), skin: profile.skin });
@@ -82,9 +88,30 @@ let game = null, myId = null, currentRoom = null, partyInfo = null, info = { new
 
 function showScreen(name) {
   for (const id of ['menu', 'lobby', 'loading']) $(id).classList.toggle('hidden', id !== name);
+  const wasRunning = previewRunning;
   previewRunning = name === 'menu';
-  if (previewRunning) { requestAnimationFrame(previewLoop); renderStats(); }
+  if (previewRunning && !wasRunning) requestAnimationFrame(previewLoop);
+  if (previewRunning) renderStats();
+  updateMenuMusic();
 }
+
+// ---------- Locker Room music (never before the player has clicked or pressed a key) ----------
+let userGestured = false;
+function updateMenuMusic() {
+  const inMenus = !game;
+  if (inMenus && settings.menuMusic && userGestured) startMenuMusic(); else stopMenuMusic();
+  $('music-toggle').classList.toggle('off', !settings.menuMusic);
+  $('music-toggle').textContent = settings.menuMusic ? '🎵' : '🔇';
+}
+const firstGesture = () => {
+  if (userGestured) return;
+  userGestured = true;
+  initAudio();
+  setTimeout(updateMenuMusic, 50);
+  removeEventListener('pointerdown', firstGesture); removeEventListener('keydown', firstGesture);
+};
+addEventListener('pointerdown', firstGesture); addEventListener('keydown', firstGesture);
+$('music-toggle').onclick = () => { settings.menuMusic = !settings.menuMusic; saveSettings(); syncSettingsUI(); updateMenuMusic(); };
 
 // ---------- skin preview ----------
 const pr = new THREE.WebGLRenderer({ canvas: $('preview'), antialias: true, alpha: true });
@@ -156,35 +183,90 @@ for (const k of ['jersey', 'accent', 'helmet', 'pants']) {
   $(`c-${k}`).oninput = (e) => { profile.skin[k] = e.target.value; if (k === 'helmet') profile.skin.stripe = profile.skin.accent; refreshPreview(); };
   $(`c-${k}`).onchange = saveProfile;
 }
-// 📸 poster photo of your player on a purple studio background
-$('photo').onclick = () => {
+// 📸 poster of your player on a purple studio background (also used for sharing match results)
+function makePoster(result) {
   const W = 1080, H = 1440;
   const out = document.createElement('canvas'); out.width = W; out.height = H;
   const g = out.getContext('2d');
+  const win = result && result.win;
   const bg = g.createRadialGradient(W / 2, H * 0.35, 50, W / 2, H * 0.4, H * 0.8);
-  bg.addColorStop(0, '#8a5ee0'); bg.addColorStop(0.5, '#5b34b8'); bg.addColorStop(1, '#1d0d45');
+  if (win) { bg.addColorStop(0, '#ffd75e'); bg.addColorStop(0.45, '#e08a1e'); bg.addColorStop(1, '#3a1606'); }
+  else { bg.addColorStop(0, '#8a5ee0'); bg.addColorStop(0.5, '#5b34b8'); bg.addColorStop(1, '#1d0d45'); }
   g.fillStyle = bg; g.fillRect(0, 0, W, H);
-  // render the player big and sharp
+  if (result) { // stadium light rays behind the player
+    g.save(); g.translate(W / 2, H * 0.42); g.globalAlpha = 0.12; g.fillStyle = '#fff';
+    for (let i = 0; i < 16; i++) { g.rotate(Math.PI / 8); g.beginPath(); g.moveTo(0, 0); g.lineTo(-60, -1100); g.lineTo(60, -1100); g.fill(); }
+    g.restore();
+  }
+  // render the player big and sharp (pose them like the menu preview)
   const keep = { pr: pr.getPixelRatio(), aspect: pCam.aspect, pos: pCam.position.clone() };
   pr.setPixelRatio(1); pr.setSize(W, H, false);
-  pCam.aspect = W / H; pCam.position.set(0, 1.05, 3.35); pCam.lookAt(0, 0.98, 0); pCam.updateProjectionMatrix();
+  pCam.aspect = W / H; pCam.position.set(0, 1.05, result ? 3.7 : 3.35); pCam.lookAt(0, result ? 0.9 : 0.98, 0); pCam.updateProjectionMatrix();
+  if (pModel) { pModel.rotation.y = Math.PI + 0.3; pModel.userData.ball.visible = false; animatePlayer(pModel, { speed: 0, phase: 0, hero: true, emote: 0, emoteT: 0, t: 1 }, 1 / 60); }
   pr.render(pScene, pCam);
   g.drawImage(pr.domElement, 0, 0, W, H);
   pr.setPixelRatio(keep.pr); pr.setSize(360, 380, false);
   pCam.aspect = keep.aspect; pCam.position.copy(keep.pos); pCam.lookAt(0, 1.05, 0); pCam.updateProjectionMatrix();
-  // name plate
+  const name = $('me-name').textContent.replace(' 👑', '');
   const preset = SKIN_PRESETS.find((p) => p.id === profile.skin.preset);
-  g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, H - 210, W, 210);
-  g.font = 'italic 900 92px "Arial Black", Impact, sans-serif'; g.fillStyle = '#ffffff'; g.textAlign = 'left';
-  g.fillText($('me-name').textContent.replace(' 👑', ''), 60, H - 105);
+  g.textAlign = 'center';
+  if (result) {
+    // big result headline at the top
+    const head = win ? '#1 VICTORY' : `#${result.place || '?'} PLACE`;
+    g.font = 'italic 900 150px "Arial Black", Impact, sans-serif';
+    g.lineWidth = 18; g.strokeStyle = 'rgba(0,0,0,.45)'; g.strokeText(head, W / 2, 190);
+    g.fillStyle = win ? '#fff6c9' : '#ffffff'; g.fillText(head, W / 2, 190);
+    g.font = 'bold 50px "Trebuchet MS", sans-serif'; g.fillStyle = win ? '#3a1606' : '#ffcc33';
+    const bits = [`${result.elims} ELIM${result.elims === 1 ? '' : 'S'}`];
+    if (result.dmg) bits.push(`${result.dmg.toLocaleString()} DAMAGE`);
+    g.fillText(bits.join('  ·  '), W / 2, 265);
+  }
+  // name plate
+  g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(0, H - 210, W, 210);
+  g.textAlign = 'left';
+  g.font = 'italic 900 92px "Arial Black", Impact, sans-serif'; g.fillStyle = '#ffffff';
+  g.fillText(name, 60, H - 105, W - 120);
   g.font = 'bold 36px "Trebuchet MS", sans-serif'; g.fillStyle = '#ffcc33';
-  g.fillText(`#${profile.skin.number}  ·  ${preset ? preset.team.toUpperCase() : ''}  ·  FOOTBALL ROYALE`, 64, H - 45);
-  out.toBlob((blob) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'my-football-royale-player.png';
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  });
+  g.fillText(result ? `${win ? '#1 VICTORY' : `#${result.place} PLACE`}  ·  ${result.elims} ELIMS  ·  FOOTBALL ROYALE` : `#${profile.skin.number}  ·  ${preset ? preset.team.toUpperCase() : ''}  ·  FOOTBALL ROYALE`, 64, H - 45, W - 120);
+  return new Promise((res) => out.toBlob(res, 'image/png'));
+}
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const inviteLink = () => partyInfo ? `${location.origin}/?squad=${partyInfo.code}` : `${location.origin}/`;
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
+  try { // old-school fallback
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch { return false; }
+}
+// share a file + text with the Web Share API when the device supports it, else download + copy the link
+async function shareOrSave(blob, filename, text, link) {
+  const file = new File([blob], filename, { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Football Royale', text: `${text} ${link}` }); return 'shared'; }
+    catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; }
+  }
+  download(blob, filename);
+  const copied = await copyText(`${text} ${link}`);
+  return copied ? 'saved+copied' : 'saved';
+}
+$('photo').onclick = async () => {
+  const blob = await makePoster(null);
+  download(blob, 'my-football-royale-player.png');
 };
+async function shareResult(r) {
+  const msg = $('res-msg');
+  msg.textContent = 'Making your poster…';
+  const blob = await makePoster(r);
+  const text = `${r.win ? '#1 VICTORY' : `#${r.place} place`} · ${r.elims} ELIMS · FOOTBALL ROYALE 🏈 Come squad up with me!`;
+  const how = await shareOrSave(blob, r.win ? 'football-royale-victory.png' : 'football-royale-result.png', text, inviteLink());
+  msg.textContent = how === 'shared' ? 'Shared! 🎉' : how === 'cancelled' ? '' : how === 'saved+copied' ? '📸 Poster saved and invite link copied. Send it to your friends!' : '📸 Poster saved!';
+}
 
 // character creator: skin tone, hair, eyes, smile
 const swatchRow = (id, list, key) => {
@@ -246,6 +328,7 @@ net.on('auth', (m) => {
   signedIn = true;
   showScreen('menu');
   net.send(hello());
+  joinPendingSquad();
 });
 net.on('auth_error', (m) => { $('auth-error').textContent = m.msg; });
 $('logout').onclick = () => { net.send({ t: 'logout' }); $('admin-menu').classList.add('hidden'); };
@@ -265,14 +348,13 @@ $('admin-drop').onclick = (e) => {
   else if (act === 'stats') net.send({ t: 'admin', action: 'stats' });
 };
 net.on('admin_ok', (m) => { $('ad-status').textContent = m.msg; $('ad-status').className = m.ok ? '' : 'err'; });
-$('sens').value = settings.sens;
-$('sens').oninput = () => { settings.sens = +$('sens').value; store.set('fr_sens', settings.sens); };
-const setMode = (m) => { profile.mode = m; [...$('mode').children].forEach((b) => b.classList.toggle('on', b.dataset.v === m)); };
+const setMode = (m) => { profile.mode = m; [...$('mode').children].forEach((b) => b.classList.toggle('on', b.dataset.v === m)); updateQuickSub(); };
 setMode(profile.mode);
 $('mode').onclick = (e) => { const b = e.target.closest('button'); if (b) { setMode(b.dataset.v); saveProfile(); } };
 
 function join(extra) {
   initAudio();
+  userGestured = true;
   saveProfile();
   $('menu-error').textContent = '';
   net.send({ t: 'join', skin: profile.skin, mode: profile.mode, ...extra });
@@ -281,23 +363,67 @@ $('quick').onclick = () => join({});
 $('create').onclick = () => join({ create: true, difficulty: $('difficulty').value });
 $('join').onclick = () => { const c = $('code').value.trim().toUpperCase(); if (c.length === 4) join({ room: c }); else $('menu-error').textContent = 'Room codes have 4 letters.'; };
 const urlRoom = new URLSearchParams(location.search).get('room');
-if (urlRoom) $('code').value = urlRoom.toUpperCase();
+if (urlRoom) { $('code').value = urlRoom.toUpperCase(); setTab('rooms'); $('join').classList.add('pulse'); }
 const urlSquad = new URLSearchParams(location.search).get('squad');
+if (urlSquad || urlRoom) {
+  $('auth-invite').innerHTML = urlSquad ? '👥 A friend invited you to their <b>squad</b>! Sign up or log in and you\'ll join them.' : `🔒 A friend invited you to room <b>${esc(urlRoom.toUpperCase())}</b>! Log in to join.`;
+  $('auth-invite').classList.remove('hidden');
+}
 
 // ---------- squads ----------
-$('party-create').onclick = () => { initAudio(); saveProfile(); net.send({ t: 'party_create' }); };
-$('party-join').onclick = () => { initAudio(); saveProfile(); net.send({ t: 'party_join', code: $('party-code').value.trim().toUpperCase() }); };
+// one tap: make a squad (if needed) and share / copy the invite link
+let inviteAfterCreate = false;
+async function shareInvite() {
+  const link = inviteLink();
+  const text = 'Squad up with me in Football Royale! 🏈';
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    try { await navigator.share({ title: 'Football Royale', text, url: link }); partyMsg('Invite sent! 🎉'); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  if (await copyText(link)) partyMsg(`🔗 Invite link copied! Paste it to your friends.`);
+  else partyMsg(`Send your friends this link: <b>${esc(link)}</b>`);
+}
+let partyMsgTimer = 0;
+function partyMsg(html) { $('party-msg').innerHTML = html; clearTimeout(partyMsgTimer); partyMsgTimer = setTimeout(() => { $('party-msg').innerHTML = ''; }, 6000); }
+$('party-invite').onclick = () => {
+  initAudio(); saveProfile();
+  if (partyInfo) return shareInvite();
+  inviteAfterCreate = true;
+  net.send({ t: 'party_create' });
+};
+$('party-share').onclick = shareInvite;
+$('party-join').onclick = () => {
+  const c = $('party-code').value.trim().toUpperCase();
+  if (c.length !== 4) { partyMsg('Squad codes have 4 letters.'); return; }
+  initAudio(); saveProfile(); net.send({ t: 'party_join', code: c });
+};
+$('party-code').onkeydown = (e) => { if (e.key === 'Enter') $('party-join').click(); };
 $('party-leave').onclick = () => net.send({ t: 'party_leave' });
-if (urlSquad) setTimeout(() => net.send({ t: 'party_join', code: urlSquad.toUpperCase() }), 800);
+// ?squad=CODE invite links: join once we're signed in
+let pendingSquad = urlSquad ? urlSquad.toUpperCase().slice(0, 4) : null;
+function joinPendingSquad() {
+  if (!pendingSquad) return;
+  net.send({ t: 'party_join', code: pendingSquad });
+  pendingSquad = null;
+  history.replaceState(null, '', location.pathname);
+}
 net.on('party', (m) => {
   partyInfo = m.code ? m : null;
+  updateQuickSub();
+  if (partyInfo && inviteAfterCreate) { inviteAfterCreate = false; shareInvite(); }
   $('party-none').classList.toggle('hidden', !!partyInfo);
   $('party-on').classList.toggle('hidden', !partyInfo);
   if (!partyInfo) return;
   $('party-code-show').textContent = m.code;
   $('party-members').innerHTML = m.members.map((x) => `<li style="color:${x.skin.jersey}"><span style="color:#fff">${esc(x.name)}${x.name === m.leader ? ' 👑' : ''}${x.busy ? ' <small>(in a match)</small>' : ''}</span></li>`).join('');
-  $('party-note').textContent = m.youLead ? 'You are the leader: press Quick Play or Create Room and your squad comes with you!' : `Waiting for ${m.leader} to start…`;
+  $('party-note').textContent = m.youLead
+    ? (m.members.length > 1 ? 'You lead! Press Quick Play and your squad drops in with you.' : 'Invite friends with the link, then press Quick Play together!')
+    : `Waiting for ${m.leader} to press Quick Play…`;
 });
+function updateQuickSub() {
+  const n = partyInfo ? partyInfo.members.length : 0;
+  $('quick-sub').textContent = partyInfo && !partyInfo.youLead ? `your squad leader starts the match`
+    : n > 1 ? `drop in with your squad of ${n}` : `75 players · ${profile.mode === 'build' ? 'building on' : 'no building'} · drop in now`;
+}
 
 // ---------- lobby ----------
 net.on('welcome', (m) => {
@@ -332,8 +458,12 @@ net.on('start', (m) => {
     game = new Game({
       renderer, map, hud, net, myId, mode: currentRoom.mode, kind: currentRoom.kind, mySkin: profile.skin, settings,
       onLeave: () => { game = null; showScreen('menu'); },
+      onPlayAgain: () => join({}),
+      onShare: shareResult,
+      confetti,
       emotes: EMOTES.filter((e) => canUseEmote(e.id, account)),
     });
+    stopMenuMusic();
     game.start(m);
     renderer.domElement.requestPointerLock?.();
   }, 30);
@@ -345,6 +475,8 @@ net.on('closed', () => {
   showScreen('menu');
 });
 net.on('error', (m) => {
+  // squad problems show up right in the squad card (the UI calls parties "squads")
+  if (/party/i.test(m.msg) && !game) { partyMsg(`😕 ${esc(m.msg.replace(/party leader/gi, 'squad leader').replace(/party/gi, 'squad'))}`); return; }
   $('menu-error').textContent = m.msg;
   if (!$('shop').classList.contains('hidden')) $('shop-msg').textContent = m.msg;
   if (game) hud.toast(m.msg);
@@ -428,6 +560,7 @@ net.on('profile', (m) => {
   $('me-name').textContent = m.username + (m.isAdmin ? ' 👑' : '');
   $('admin-menu').classList.toggle('hidden', !m.isAdmin);
   if (!signedIn) { signedIn = true; $('auth').classList.add('hidden'); if (!game && $('lobby').classList.contains('hidden')) showScreen('menu'); }
+  joinPendingSquad();
   account = { bucks: m.bucks, owned: m.owned, stats: m.stats };
   $('bucks').textContent = m.bucks.toLocaleString();
   $('shop-bucks').textContent = m.bucks.toLocaleString();
@@ -440,6 +573,7 @@ net.on('profile', (m) => {
 });
 let rewardTimer = 0;
 net.on('reward', (m) => {
+  if (game) game.onReward(m);
   const el = $('reward');
   el.textContent = `+${m.bucks} Ball Bucks · ${m.why}`;
   el.classList.remove('hidden');
@@ -506,6 +640,61 @@ $('shop-items').onclick = (e) => {
   if (account.bucks < item.price) { $('shop-msg').textContent = `You need ${(item.price - account.bucks).toLocaleString()} more Ball Bucks. Keep playing to earn more!`; return; }
   if (confirm(`Buy ${item.name} for ${item.price.toLocaleString()} Ball Bucks?`)) net.send({ t: 'buy', item: item.id });
 };
+
+// ---------- Locker Room tabs ----------
+function setTab(name) {
+  [...$('menu-tabs').children].forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('#menu .tab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== name));
+  store.set('fr_tab', name);
+}
+$('menu-tabs').onclick = (e) => { const b = e.target.closest('button[data-tab]'); if (b) { setTab(b.dataset.tab); sfx.click(); } };
+if (!urlRoom) setTab(store.get('fr_tab', 'locker'));
+$('reset-tips').onclick = () => { store.set('fr_tips', {}); $('reset-tips').textContent = '✅ Coach tips will show in your next match'; };
+
+// ---------- Settings (gear in the Locker Room and in the pause menu) ----------
+const SLIDERS = [
+  ['s-master', 'master', (v) => `${Math.round(v * 100)}%`], ['s-music', 'music', (v) => `${Math.round(v * 100)}%`],
+  ['s-sfx', 'sfx', (v) => `${Math.round(v * 100)}%`], ['sens', 'sens', (v) => `${(+v).toFixed(1)}x`], ['s-fov', 'fov', (v) => `${v}°`],
+];
+function syncSettingsUI() {
+  for (const [id, key, fmt] of SLIDERS) { $(id).value = settings[key]; $(id).nextElementSibling.textContent = fmt(settings[key]); }
+  $('s-invert').checked = !!settings.invertY;
+  $('s-fps').checked = !!settings.showFps;
+  $('s-menu-music').checked = !!settings.menuMusic;
+}
+for (const [id, key, fmt] of SLIDERS) {
+  $(id).oninput = () => {
+    settings[key] = +$(id).value;
+    $(id).nextElementSibling.textContent = fmt(settings[key]);
+    setVolumes({ master: settings.master, music: settings.music, sfx: settings.sfx });
+    saveSettings();
+  };
+  if (key === 'sfx' || key === 'master') $(id).onchange = () => sfx.pickup(); // let them hear the new level
+}
+$('s-invert').onchange = () => { settings.invertY = $('s-invert').checked; saveSettings(); };
+$('s-fps').onchange = () => { settings.showFps = $('s-fps').checked; saveSettings(); };
+$('s-menu-music').onchange = () => { settings.menuMusic = $('s-menu-music').checked; saveSettings(); updateMenuMusic(); };
+function openSettings() { initAudio(); syncSettingsUI(); $('settings').classList.remove('hidden'); }
+$('open-settings').onclick = openSettings;
+$('pause-settings').onclick = openSettings;
+$('settings-close').onclick = () => $('settings').classList.add('hidden');
+$('settings').onclick = (e) => { if (e.target === $('settings')) $('settings').classList.add('hidden'); };
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('settings').classList.contains('hidden')) $('settings').classList.add('hidden'); });
+// Graphics quality: hooks into client/js/quality.js (setQuality/getQuality) when that module is present.
+import('./quality.js').then((q) => {
+  if (typeof q.setQuality !== 'function') return;
+  const levels = q.QUALITY_LEVELS || q.LEVELS || ['low', 'medium', 'high'];
+  const names = { low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra', auto: 'Auto' };
+  const box = $('s-quality');
+  const draw = () => {
+    const cur = typeof q.getQuality === 'function' ? q.getQuality() : null;
+    box.innerHTML = levels.map((l) => `<button data-v="${esc(l)}" class="${l === cur ? 'on' : ''}">${esc(names[l] || l)}</button>`).join('');
+  };
+  box.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; q.setQuality(b.dataset.v); draw(); };
+  draw();
+  $('s-quality-row').classList.remove('hidden');
+}).catch(() => { /* quality.js not available: the row stays hidden */ });
+syncSettingsUI();
 
 // debug hook for automated tests
 window.__fr = { get game() { return game; } };
