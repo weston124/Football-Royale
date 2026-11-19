@@ -1,0 +1,19 @@
+{
+  "name": "football-royale",
+  "version": "1.0.0",
+  "description": "Football Royale - an original web multiplayer battle royale",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test --test-force-exit test/*.test.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.170.0",
+    "ws": "^8.18.0"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}
