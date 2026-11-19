@@ -6,10 +6,14 @@ import { PLAYER, DROP, BUILD, PICKUP_RANGE, ZONE_PHASES, TICK_RATE } from '/shar
 import { EMOTES } from '/shared/skins.js';
 import { buildWorld } from './world.js';
 import {
-  createPlayer, animatePlayer, setHeld, disposePlayer, createWeaponModel, createConsumable, createLootModel,
-  createChest, createBlimp, createFootball, turfMaterial, mat, WCODES, createHand, setupEnvironment,
+  createPlayer, animatePlayer, disposePlayer, createWeaponModel, createConsumable,
+  createBlimp, createFootball, turfMaterial, mat, WCODES, createHand, setupEnvironment,
 } from './models.js';
 import { sfx } from './audio.js';
+import { PlayerRenderer } from './players.js';
+import { LootRenderer, ChestRenderer } from './instanced.js';
+import { attachRenderer, getSettings, onQualityChange, frameTick } from './quality.js';
+import { createSnapshotDecoder, extraDelay } from '/shared/netcodec.js';
 
 const $ = (id) => document.getElementById(id);
 const PH = ['ground', 'blimp', 'fall', 'glide', 'dead'];
@@ -17,6 +21,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerpAngle = (a, b, k) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * k; };
 const dirFrom = (yaw, pitch) => { const c = Math.cos(pitch); return [-Math.sin(yaw) * c, Math.sin(pitch), -Math.cos(yaw) * c]; };
 const nowS = () => performance.now() / 1000;
+const WHISTLE_GEO = new THREE.SphereGeometry(0.15, 8, 6);
 
 export class Game {
   constructor({ renderer, map, hud, net, myId, mode, kind, mySkin, settings, onLeave, emotes }) {
@@ -28,9 +33,12 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.08, 2000);
     this.world = new World();
     for (const b of map.boxes) this.world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
+    const before = new Set(this.scene.children);
     const w = buildWorld(this.scene, map);
+    this.worldObjects = this.scene.children.filter((o) => !before.has(o));
     setupEnvironment(renderer, this.scene, 0.5);
     this.storm = w.storm; this.stormTex = w.stormTex;
+    this.decodePs = createSnapshotDecoder();
     this.roster = new Map(); this.ents = new Map(); this.loot = new Map(); this.chests = new Map();
     this.pieces = new Map(); this.projs = new Map(); this.fx = []; this.kills = new Map();
     this.me = { hp: 100, pad: 0, inv: [null, null, null, null, null], slot: 0, mats: 0, k: 0, ph: 'blimp', rl: 0, us: 0 };
@@ -44,11 +52,22 @@ export class Game {
     this.ads = 0;
     this.blimpMesh = createBlimp(); this.blimpMesh.visible = false; this.scene.add(this.blimpMesh);
     this.myModel = createPlayer(mySkin); this.myModel.visible = false; this.scene.add(this.myModel);
-    // chests
+    // chests, floor loot and other players are drawn instanced / with levels of detail
+    attachRenderer(renderer);
+    this.lootR = new LootRenderer(this.scene);
+    this.chestR = new ChestRenderer(this.scene);
+    this.players = new PlayerRenderer(this.scene);
     map.chests.forEach((c, i) => {
-      const m = createChest(); m.position.set(c.x, c.y, c.z); this.scene.add(m);
-      this.chests.set(i, { mesh: m, x: c.x, y: c.y, z: c.z });
+      this.chestR.add(i, c.x, c.y, c.z);
+      this.chests.set(i, { x: c.x, y: c.y, z: c.z });
     });
+    this.applyQuality = () => {
+      const P = getSettings();
+      if (this.scene.fog) this.scene.fog.far = P.fogFar;
+      this.camera.far = P.camFar; this.camera.updateProjectionMatrix();
+    };
+    this.offQuality = onQualityChange(this.applyQuality);
+    this.applyQuality();
     this.setupViewmodel();
     this.ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x3fa2ff, transparent: true, opacity: 0.35, depthWrite: false }));
     this.ghost.visible = false; this.scene.add(this.ghost);
@@ -268,14 +287,11 @@ export class Game {
 
   addLoot(l) {
     const [id, x, y, z, item] = l;
-    const mesh = createLootModel(item);
-    mesh.position.set(x, y, z);
-    mesh.visible = false;
-    this.scene.add(mesh);
-    this.loot.set(id, { mesh, item, x, y, z, spin: Math.random() * 6 });
+    this.lootR.add(id, item, x, y, z);
+    this.loot.set(id, { item, x, y, z });
   }
-  removeLoot(id) { const l = this.loot.get(id); if (l) { this.scene.remove(l.mesh); this.loot.delete(id); } }
-  removeChest(id) { const c = this.chests.get(id); if (c) { this.scene.remove(c.mesh); this.chests.delete(id); } }
+  removeLoot(id) { if (this.loot.has(id)) { this.lootR.remove(id); this.loot.delete(id); } }
+  removeChest(id) { if (this.chests.has(id)) { this.chestR.remove(id); this.chests.delete(id); } }
 
   addPiece([id, kind, gx, gy, gz, r, hp]) {
     if (this.pieces.has(id)) return;
@@ -313,17 +329,21 @@ export class Game {
   onSnapshot(m) {
     const est = m.tm - nowS();
     this.offset = this.offset == null ? est : Math.max(est, this.offset - 0.002);
-    const seen = new Set();
-    for (const s of m.ps) {
-      const id = s[0];
-      seen.add(id);
+    // players arrive delta-encoded and only when they changed / are due (see shared/netcodec.js)
+    if (m.pg) for (const id of m.pg) this.removeEnt(id);
+    for (const s of this.decodePs(m)) {
+      const id = s.id;
       if (id === this.myId) continue;
       let e = this.ents.get(id);
-      if (!e) { e = { id, buf: [], model: null, lod: null, em: 0, emStart: 0, swing: 0 }; this.ents.set(id, e); }
-      e.buf.push({ t: m.tm, x: s[1], y: s[2], z: s[3], yaw: s[4], pitch: s[5], ph: s[6], w: s[7], em: s[8], fl: s[9] });
-      if (e.buf.length > 30) e.buf.shift();
+      if (!e) { e = { id, buf: [], model: null, lod: null, em: 0, emStart: 0, swing: 0, every: s.every, delay: extraDelay(s.every, TICK_RATE) }; this.ents.set(id, e); }
+      const b = e.buf, last = b[b.length - 1], gap = s.every / TICK_RATE;
+      // nothing was sent while the player stood still: hold the old state until the previous slot
+      if (last && m.tm - last.t > gap * 1.5) b.push({ ...last, t: m.tm - gap });
+      s.t = m.tm;
+      b.push(s);
+      e.every = s.every;
+      while (b.length > 30) b.shift();
     }
-    for (const [id, e] of this.ents) if (!seen.has(id)) this.removeEnt(id);
     for (const ev of m.ev) this.onEvent(ev);
     if (m.zn) {
       const z = m.zn;
@@ -368,8 +388,7 @@ export class Game {
       }
       case 'pr': {
         const [, id, kind, x, y, z, vx, vy, vz, owner] = ev;
-        const mesh = kind === 'pigskin' ? createFootball(0.45) : createConsumable('tape');
-        if (kind === 'whistle') { mesh.clear(); mesh.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), mat('#e0e0e0'))); }
+        const mesh = kind === 'pigskin' ? createFootball(0.45) : kind === 'whistle' ? new THREE.Mesh(WHISTLE_GEO, mat('#e0e0e0')) : createConsumable('tape');
         mesh.position.set(x, y, z);
         this.scene.add(mesh);
         this.projs.set(id, { mesh, x, y, z, vx, vy, vz, grav: WEAPONS[kind].grav, kind });
@@ -390,7 +409,7 @@ export class Game {
         if (!victim) break;
         if (kid) this.kills.set(kid, (this.kills.get(kid) || 0) + 1);
         const e = this.ents.get(vid);
-        if (e && e.model) this.burst(e.model.position.clone().add(new THREE.Vector3(0, 1.2, 0)), ['#ff5a2a', '#ffcc33', '#3fa2ff', '#4fd16b', '#ff7bf2'], 40);
+        if (e && e.s) this.burst(new THREE.Vector3(e.s.x, e.s.y + 1.2, e.s.z), ['#ff5a2a', '#ffcc33', '#3fa2ff', '#4fd16b', '#ff7bf2'], 40);
         const mine = kid === this.myId || vid === this.myId;
         let html;
         if (wid === 'storm') html = `<b>${esc(victim.name)}</b> got caught in the Overtime Storm 🌀`;
@@ -443,6 +462,7 @@ export class Game {
       case 'dead': {
         this.dead = true;
         this.spectateId = e[2] || 0;
+        if (this.spectateId) this.net.send({ t: 'spec', id: this.spectateId });
         const killer = this.roster.get(e[2]);
         document.exitPointerLock();
         $('dead-title').textContent = 'FUMBLED!';
@@ -483,6 +503,7 @@ export class Game {
     if (!ids.length) return;
     const i = ids.indexOf(this.spectateId);
     this.spectateId = ids[(i + 1) % ids.length];
+    this.net.send({ t: 'spec', id: this.spectateId });   // server sends players near them more often
   }
 
   showScoreboard() {
@@ -536,26 +557,23 @@ export class Game {
   removeEnt(id) {
     const e = this.ents.get(id);
     if (!e) return;
-    if (e.model) { this.scene.remove(e.model); disposePlayer(e.model); }
-    if (e.lod) this.scene.remove(e.lod);
-    if (e.tag) this.scene.remove(e.tag);
+    this.players.release(e);
+    if (e.tag) { this.scene.remove(e.tag); e.tag.material.map.dispose(); e.tag.material.dispose(); }
     this.ents.delete(id);
   }
+  // Skin and name tag; the 3D model itself is created on demand by players.js
   ensureModels(e) {
     const r = this.roster.get(e.id);
-    const skin = r ? r.skin : this.mySkin;
-    if (!e.model) {
-      e.model = createPlayer(skin); this.scene.add(e.model);
-      const lod = new THREE.Group();
-      const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.6, 2, 6), mat(skin.pants)); legs.position.y = 0.55; lod.add(legs);
-      const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.35, 2, 6), mat(skin.jersey)); b.position.y = 1.3; lod.add(b);
-      const h = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat(skin.helmet)); h.position.y = 1.8; lod.add(h);
-      e.lod = lod; this.scene.add(lod);
-      const showTag = this.kind === 'island' || (r && r.team === this.myTeam);
-      if (showTag && r) { e.tag = nameTag(r.name, r.team === this.myTeam ? '#3fa2ff' : '#ffffff'); this.scene.add(e.tag); }
-    }
+    e.skin = r ? r.skin : this.mySkin;
+    const showTag = this.kind === 'island' || (r && r.team === this.myTeam);
+    if (showTag && r && !e.tag) { e.tag = nameTag(r.name, r.team === this.myTeam ? '#3fa2ff' : '#ffffff'); this.scene.add(e.tag); }
   }
+  // test hook (tools/rendermeter.js): throw away and rebuild one player's model
+  debugRecreate(e) { this.players.release(e); }
+  // Interpolated state of entity e at render time t (far players are drawn e.delay further back,
+  // matching the server's lag compensation for them).
   sample(e, t) {
+    t -= e.delay || 0;
     const b = e.buf;
     if (!b.length) return null;
     if (t <= b[0].t) return b[0];
@@ -622,32 +640,13 @@ export class Game {
     this.recoil *= Math.pow(0.0001, dt);
     this.swing = Math.max(0, this.swing - dt * 4);
 
-    // --- other players ---
-    const mates = [];
+    // --- other players: interpolate (drawn after the camera moved, see below) ---
     for (const e of this.ents.values()) {
-      const s = this.sample(e, renderT);
-      if (!s) continue;
-      const dist = Math.hypot(s.x - L.x, s.z - L.z);
-      const r = this.roster.get(e.id);
-      if (r && r.team === this.myTeam) mates.push(s);
-      if (dist > 450) { if (e.model) e.model.visible = e.lod.visible = false; continue; }
-      this.ensureModels(e);
-      const near = dist < 90 || e.id === this.spectateId;
-      e.model.visible = near; e.lod.visible = !near && s.ph !== 3;
-      const obj = near ? e.model : e.lod;
-      const prev = e.last || s;
-      const spd = Math.hypot(s.x - prev.x, s.z - prev.z) / Math.max(dt, 0.001);
-      e.last = { x: s.x, z: s.z };
-      obj.position.set(s.x, s.y, s.z);
-      obj.rotation.y = s.yaw;
-      if (e.tag) { e.tag.position.set(s.x, s.y + 2.5, s.z); e.tag.visible = dist < 200; }
-      if (near) {
-        if (s.em && s.em !== e.em) e.emStart = t;
-        e.em = s.em;
-        e.swing = Math.max(0, e.swing - dt * 4);
-        setHeld(e.model, s.ph === 0 && !s.em ? s.w : 0);
-        animatePlayer(e.model, { speed: Math.min(spd, 12), phase: s.ph, emote: s.em, emoteT: t - e.emStart, pitch: s.pitch, swing: e.swing, t }, dt);
-      }
+      // far players arrive less often and are drawn a little further back in time (glide between bands)
+      const target = extraDelay(e.every || 1, TICK_RATE);
+      e.delay = (e.delay ?? target) + clamp(target - (e.delay ?? target), -dt * 0.3, dt * 0.3);
+      e.s = this.sample(e, renderT);
+      if (!e.skin) this.ensureModels(e);
     }
 
     // --- projectiles ---
@@ -667,12 +666,10 @@ export class Game {
       return true;
     });
 
-    // --- loot visibility & spin ---
-    if (this.frame % 3 === 0) {
-      for (const l of this.loot.values()) l.mesh.visible = Math.abs(l.x - L.x) < 70 && Math.abs(l.z - L.z) < 70;
-      for (const c of this.chests.values()) c.mesh.visible = Math.abs(c.x - L.x) < 150 && Math.abs(c.z - L.z) < 150;
-    }
-    for (const l of this.loot.values()) if (l.mesh.visible) { l.spin += dt * 1.5; l.mesh.userData.inner.rotation.y = l.spin; l.mesh.userData.inner.position.y = 0.55 + Math.sin(l.spin * 2) * 0.08; }
+    // --- loot & equipment bags (instanced, only the nearby ones) ---
+    const Q = getSettings();
+    this.lootR.update(dt, L.x, L.z, Q.lootDist);
+    if (this.frame % 3 === 0) this.chestR.update(L.x, L.z, Q.chestDist);
 
     // --- storm ---
     if (this.zone) {
@@ -688,6 +685,16 @@ export class Game {
 
     // --- camera ---
     this.updateCamera(t, dt, renderT);
+
+    // --- other players: level of detail, culling, animation (players.js) ---
+    const cp = this.camera.position;
+    for (const e of this.ents.values()) {
+      if (!e.s) continue;
+      e.dist = Math.hypot(e.s.x - cp.x, e.s.z - cp.z);
+      if (e.tag) { e.tag.position.set(e.s.x, e.s.y + 2.5, e.s.z); e.tag.visible = e.dist < Q.tagDist && e.s.ph !== 4; }
+    }
+    this.players.update(this.ents, this.camera, Q, t, dt, this.dead ? this.spectateId : 0);
+    frameTick(dt);
 
     // --- HUD ---
     if (this.frame % 4 === 0) this.updateHud(st, t);
@@ -912,7 +919,22 @@ export class Game {
     for (const id of ['pause', 'dead', 'victory', 'emotes', 'bigmap', 'scoreboard']) $(id).classList.add('hidden');
     this.hud.show(false);
     this.hud.centerMsg(''); this.hud.prompt('');
-    this.scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    this.offQuality();
+    for (const e of this.ents.values()) { this.players.release(e); if (e.tag) { e.tag.material.map.dispose(); e.tag.material.dispose(); } }
+    this.players.dispose(); this.lootR.dispose(); this.chestR.dispose();
+    for (const p of this.pieces.values()) p.mesh.geometry.dispose();
+    disposePlayer(this.myModel);
+    this.worldObjects.push(this.blimpMesh, this.ghost);
+    this.disposeWorld();
+  }
+  // free the city (it is rebuilt for every match); shared player/prop resources stay cached
+  disposeWorld() {
+    for (const o of this.worldObjects || []) {
+      o.traverse((x) => {
+        if (x.geometry) x.geometry.dispose();
+        for (const m of [].concat(x.material || [])) { if (m.map) m.map.dispose(); m.dispose(); }
+      });
+    }
   }
 }
 

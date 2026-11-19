@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { RARITIES } from '/shared/weapons.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createHuman, humanReady, loadHuman } from './human.js';
 export { loadHuman };
 
@@ -16,18 +17,24 @@ export function setupEnvironment(renderer, scene, intensity = 0.55) {
   scene.environment = envCache.get(renderer);
   scene.environmentIntensity = intensity;
 }
-let shadowTex = null;
-function blobShadow() {
-  if (!shadowTex) {
+let shadowRes = null;
+// Soft round blob under a player (geometry + material shared by everyone; players.js instances it in-game)
+export function blobShadowParts() {
+  if (!shadowRes) {
     const c = document.createElement('canvas'); c.width = c.height = 64;
     const g = c.getContext('2d');
     const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32);
     gr.addColorStop(0, 'rgba(0,0,0,0.45)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
-    shadowTex = new THREE.CanvasTexture(c);
+    const geo = new THREE.PlaneGeometry(0.9, 0.9); geo.rotateX(-Math.PI / 2);
+    shadowRes = { geo, mat: new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }) };
   }
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
-  m.rotation.x = -Math.PI / 2; m.position.y = 0.03; m.renderOrder = 1;
+  return shadowRes;
+}
+function blobShadow() {
+  const { geo, mat: m0 } = blobShadowParts();
+  const m = new THREE.Mesh(geo, m0);
+  m.position.y = 0.03; m.renderOrder = 1;
   return m;
 }
 
@@ -164,23 +171,27 @@ function makeHorn(side, color) {
   return g;
 }
 
-export function createPlayer(skin) {
-  return humanReady() ? createRealPlayer(skin) : createCartoonPlayer(skin);
+// opts.detail: 'full' (default, menus) or 'lazy' (in-game: players.js picks full/mid detail per frame).
+// opts.shadow: false to leave out the blob shadow (in-game shadows are instanced).
+export function createPlayer(skin, opts = {}) {
+  return humanReady() ? createRealPlayer(skin, opts) : createCartoonPlayer(skin);
 }
 
+let lassoRes = null;
 // Realistic skinned athlete; the animation code drives invisible 'proxy' joints that we copy onto the bones.
-function createRealPlayer(skin) {
+function createRealPlayer(skin, opts) {
   const root = new THREE.Group();
-  const h = createHuman(skin);
+  const h = createHuman(skin, opts);
   root.add(h.mesh);
   const P = {};
   for (const k of ['body', 'spine', 'head', 'legL', 'legR', 'kneeL', 'kneeR', 'armL', 'armR', 'elbowL', 'elbowR']) P[k] = new THREE.Object3D();
   P.hand = h.hand;
-  const lasso = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.014, 6, 28), new THREE.MeshStandardMaterial({ color: '#c8a165', roughness: 0.9 }));
+  if (!lassoRes) lassoRes = [new THREE.TorusGeometry(0.45, 0.014, 6, 28), new THREE.MeshStandardMaterial({ color: '#c8a165', roughness: 0.9 })];
+  const lasso = new THREE.Mesh(lassoRes[0], lassoRes[1]);
   lasso.rotation.x = Math.PI / 2; lasso.position.y = -0.05; lasso.visible = false;
   P.hand.add(lasso); P.lasso = lasso;
   P.chute = makeChute(skin); root.add(P.chute);
-  P.shadow = blobShadow(); root.add(P.shadow);
+  if (opts.shadow !== false) { P.shadow = blobShadow(); root.add(P.shadow); }
   const B = h.bones, rootY = B.root.position.y;
   const rig = () => {
     B.root.position.y = rootY + (P.body.position.y - 0.98);
@@ -197,23 +208,29 @@ function createRealPlayer(skin) {
     }
   };
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); // only matters where shadows are turned on
-  P.shadow.castShadow = false; P.shadow.receiveShadow = false;
+  if (P.shadow) { P.shadow.castShadow = false; P.shadow.receiveShadow = false; }
   root.userData = { parts: P, walk: 0, held: null, heldCode: -1, rig, human: h, setHelmet: h.setHelmet };
   rig();
   return root;
 }
 
+let chuteRes = null;
 function makeChute(skin) {
+  if (!chuteRes) {
+    const pts = [];
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; pts.push(new THREE.Vector3(0, 1.6, 0), new THREE.Vector3(Math.cos(a) * 2.1, 4.6, Math.sin(a) * 2.1)); }
+    chuteRes = {
+      canopy: new THREE.SphereGeometry(2.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2.6),
+      stripe: new THREE.SphereGeometry(2.62, 16, 8, 0, Math.PI * 2, Math.PI / 4.5, 0.12),
+      lines: new THREE.BufferGeometry().setFromPoints(pts), lineMat: new THREE.LineBasicMaterial({ color: 0xffffff }),
+    };
+  }
   const chute = new THREE.Group();
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2.6),
-    new THREE.MeshLambertMaterial({ color: skin.accent, side: THREE.DoubleSide }));
+  const canopy = new THREE.Mesh(chuteRes.canopy, mat(skin.accent, { side: THREE.DoubleSide }));
   canopy.scale.y = 0.55; canopy.position.y = 4.4; chute.add(canopy);
-  const stripe = new THREE.Mesh(new THREE.SphereGeometry(2.62, 16, 8, 0, Math.PI * 2, Math.PI / 4.5, 0.12),
-    new THREE.MeshLambertMaterial({ color: skin.jersey, side: THREE.DoubleSide }));
+  const stripe = new THREE.Mesh(chuteRes.stripe, mat(skin.jersey, { side: THREE.DoubleSide }));
   stripe.scale.y = 0.55; stripe.position.y = 4.4; chute.add(stripe);
-  const pts = [];
-  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; pts.push(new THREE.Vector3(0, 1.6, 0), new THREE.Vector3(Math.cos(a) * 2.1, 4.6, Math.sin(a) * 2.1)); }
-  chute.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffffff })));
+  chute.add(new THREE.LineSegments(chuteRes.lines, chuteRes.lineMat));
   chute.visible = false;
   return chute;
 }
@@ -402,16 +419,11 @@ function createCartoonPlayer(skin) {
   return root;
 }
 
+// Frees what one player owns (its color buffers and bone texture). Geometry, materials and
+// textures shared between players stay alive.
 export function disposePlayer(m) {
   const h = m.userData.human;
-  if (h) {
-    for (const x of h.owned) x.dispose();
-    const g = h.mesh.geometry;
-    for (const k of ['position', 'normal', 'skinIndex', 'skinWeight']) g.deleteAttribute(k); // shared, keep on GPU
-    g.setIndex(null); g.dispose();
-    h.mesh.skeleton.dispose();
-    return;
-  }
+  if (h) { h.dispose(); return; }
   m.userData.numTex.dispose();
   for (const x of m.userData.owned || []) x.dispose();
   m.traverse((o) => { if (o.isMesh && o.geometry && !o.geometry.parameters) o.geometry.dispose(); });
@@ -560,8 +572,45 @@ export function animatePlayer(model, s, dt) {
   if (u.rig) u.rig();
 }
 
+// ---------- baked props ----------
+// Props built from many small colored shapes are baked once into ONE vertex-colored geometry
+// (cached), so a weapon/loot item/chest is a single draw call and can be instanced (instanced.js).
+export const propMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+const bakeCache = new Map();
+export function bakeGroup(g) {
+  g.updateMatrixWorld(true);
+  const geos = [];
+  const col = new THREE.Color();
+  g.traverse((m) => {
+    if (!m.isMesh || !m.visible) return;
+    let geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    const vc = m.material.vertexColors && geo.attributes.color;   // an already baked prop: keep its colors
+    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal' && !(vc && k === 'color')) geo.deleteAttribute(k);
+    geo.applyMatrix4(m.matrixWorld);
+    col.copy(m.material.color);
+    if (m.material.emissive) col.add(m.material.emissive);
+    const n = geo.attributes.position.count, c = new Float32Array(n * 3);
+    const src = vc ? geo.attributes.color.array : null;
+    for (let i = 0; i < n * 3; i += 3) {
+      c[i] = col.r * (src ? src[i] : 1); c[i + 1] = col.g * (src ? src[i + 1] : 1); c[i + 2] = col.b * (src ? src[i + 2] : 1);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    geos.push(geo);
+  });
+  const out = geos.length ? mergeGeometries(geos) : new THREE.BufferGeometry();
+  geos.forEach((x) => x.dispose());
+  return out;
+}
+export function bakedGeometry(key, build) {
+  if (!bakeCache.has(key)) bakeCache.set(key, bakeGroup(build()));
+  return bakeCache.get(key);
+}
+
 // ---------- weapons ----------
 export function createWeaponModel(wid, rarity = 0) {
+  return new THREE.Mesh(bakedGeometry('w' + wid + rarity, () => buildWeaponGroup(wid, rarity)), propMaterial);
+}
+function buildWeaponGroup(wid, rarity = 0) {
   const g = new THREE.Group();
   const rc = RARITIES[rarity].color;
   const dark = '#2b2f36', mid = '#4a505a';
@@ -603,7 +652,7 @@ export function createWeaponModel(wid, rarity = 0) {
       tube.rotation.x = Math.PI / 2; tube.position.z = -0.2; g.add(tube);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 6, 14), mat(rc));
       ring.position.z = -0.6; g.add(ring);
-      const ball = createFootball(0.24); ball.position.z = -0.62; g.add(ball);
+      const ball = buildFootball(0.24); ball.position.z = -0.62; g.add(ball);
       g.add(box(0.06, 0.18, 0.08, '#333', 0, -0.15, 0.05));
       break;
     }
@@ -622,6 +671,9 @@ export function createWeaponModel(wid, rarity = 0) {
 }
 
 export function createFootball(len = 0.3) {
+  return new THREE.Mesh(bakedGeometry('ball' + len, () => buildFootball(len)), propMaterial);
+}
+function buildFootball(len) {
   const g = new THREE.Group();
   const ball = new THREE.Mesh(new THREE.SphereGeometry(len / 2, 14, 10), mat('#8b4513'));
   ball.scale.set(0.62, 0.62, 1);
@@ -632,6 +684,9 @@ export function createFootball(len = 0.3) {
 }
 
 export function createConsumable(cid) {
+  return new THREE.Mesh(bakedGeometry('c' + cid, () => buildConsumable(cid)), propMaterial);
+}
+function buildConsumable(cid) {
   const g = new THREE.Group();
   if (cid === 'tape') {
     const t = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.07, 8, 16), mat('#f2f2f2'));
@@ -667,6 +722,10 @@ export function createLootModel(item) {
   return g;
 }
 
+// Equipment bag (chest) without its glow, baked (instanced.js draws all chests in one call)
+export function chestGeometry() {
+  return bakedGeometry('chest', () => { const g = createChest(); g.children.splice(-2); return g; });
+}
 // Equipment bag (chest)
 export function createChest() {
   const g = new THREE.Group();
