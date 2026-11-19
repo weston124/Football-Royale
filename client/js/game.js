@@ -7,7 +7,7 @@ import { EMOTES } from '/shared/skins.js';
 import { buildWorld } from './world.js';
 import {
   createPlayer, animatePlayer, setHeld, disposePlayer, createWeaponModel, createConsumable, createLootModel,
-  createChest, createBlimp, createFootball, turfMaterial, mat, WCODES, createHand,
+  createChest, createBlimp, createFootball, turfMaterial, mat, WCODES, createHand, setupEnvironment,
 } from './models.js';
 import { sfx } from './audio.js';
 
@@ -29,6 +29,7 @@ export class Game {
     this.world = new World();
     for (const b of map.boxes) this.world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
     const w = buildWorld(this.scene, map);
+    setupEnvironment(renderer, this.scene, 0.5);
     this.storm = w.storm; this.stormTex = w.stormTex;
     this.roster = new Map(); this.ents = new Map(); this.loot = new Map(); this.chests = new Map();
     this.pieces = new Map(); this.projs = new Map(); this.fx = []; this.kills = new Map();
@@ -66,6 +67,7 @@ export class Game {
   // ---------- first-person arms & weapon ----------
   setupViewmodel() {
     this.vmScene = new THREE.Scene();
+    setupEnvironment(this.renderer, this.vmScene, 0.6);
     this.vmScene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 2.2));
     const d = new THREE.DirectionalLight(0xffffff, 1.2); d.position.set(1, 2, 1); this.vmScene.add(d);
     this.vmCam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 10);

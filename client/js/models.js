@@ -1,6 +1,33 @@
 // All 3D models are built from simple shapes in code (no downloaded art).
 import * as THREE from 'three';
 import { RARITIES } from '/shared/weapons.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// Soft studio lighting for characters (glossy helmets, smooth skin). Only affects the players' materials.
+const envCache = new WeakMap();
+export function setupEnvironment(renderer, scene, intensity = 0.55) {
+  if (!envCache.has(renderer)) {
+    const pm = new THREE.PMREMGenerator(renderer);
+    envCache.set(renderer, pm.fromScene(new RoomEnvironment(), 0.04).texture);
+    pm.dispose();
+  }
+  scene.environment = envCache.get(renderer);
+  scene.environmentIntensity = intensity;
+}
+let shadowTex = null;
+function blobShadow() {
+  if (!shadowTex) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(0,0,0,0.45)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    shadowTex = new THREE.CanvasTexture(c);
+  }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.03; m.renderOrder = 1;
+  return m;
+}
 
 const matCache = new Map();
 export function mat(color, opts = {}) {
@@ -41,18 +68,18 @@ function smat(color, rough = 0.75, metal = 0, extra = {}) {
 }
 // A smooth limb/torso shape spun from a list of [radius, height] points (bottom to top)
 const latheCache = new Map();
-function lathe(profile, m, segs = 14) {
+function lathe(profile, m, segs = 22) {
   const key = JSON.stringify(profile) + segs;
   if (!latheCache.has(key)) latheCache.set(key, new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), segs));
   return new THREE.Mesh(latheCache.get(key), m);
 }
-function ball(r, m, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1, ws = 16, hs = 12) {
+function ball(r, m, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1, ws = 24, hs = 18) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), m);
   mesh.position.set(x, y, z); mesh.scale.set(sx, sy, sz);
   return mesh;
 }
 function cyl(r1, r2, h, m, x = 0, y = 0, z = 0) {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, 12), m);
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, 16), m);
   mesh.position.set(x, y, z);
   return mesh;
 }
@@ -143,10 +170,12 @@ export function createPlayer(skin) {
   const parts = { body };
   const tone = skin.tone || '#c98e62';
   const M = {
-    skin: smat(tone, 0.62),
-    jersey: smat(skin.jersey, 0.85),
+    skin: smat(tone, 0.5),
+    iris: smat(['#4a2e1c', '#2f5f8a', '#3f6b3a', '#6b4a2a'][(skin.number || 0) % 4], 0.25),
+    lid: smat(new THREE.Color(tone).multiplyScalar(0.92).getStyle(), 0.55),
+    jersey: smat(skin.jersey, 0.62),
     accent: smat(skin.accent, 0.8),
-    pants: smat(skin.pants, 0.7),
+    pants: smat(skin.pants, 0.5),
     helmet: smat(skin.helmet, 0.22, 0.05),
     stripe: smat(skin.stripe, 0.25, 0.05),
     mask: smat(skin.mask, 0.35, 0.4),
@@ -216,17 +245,23 @@ export function createPlayer(skin) {
   }
 
   // ---------- head ----------
-  const head = new THREE.Group(); head.position.y = 0.73; spine.add(head); parts.head = head;
+  const head = new THREE.Group(); head.position.y = 0.745; spine.add(head); parts.head = head;
+  const headScale = 1.13; // slightly bigger hero head
   const face = new THREE.Group(); head.add(face);
   face.add(ball(0.098, M.skin, 0, 0.02, 0, 0.9, 1.08, 1.0, 20, 16));     // skull
   face.add(ball(0.078, M.skin, 0, -0.035, -0.018, 0.92, 0.82, 0.98));     // jaw
   face.add(ball(0.03, M.skin, 0, -0.07, -0.05, 1.2, 0.8, 0.9));          // chin
   for (const sx of [-1, 1]) {
     face.add(ball(0.019, M.skin, sx * 0.091, 0.008, 0.005, 0.45, 1, 0.8)); // ear
-    face.add(ball(0.0125, M.white, sx * 0.032, 0.022, -0.082, 1.15, 0.8, 0.6));  // eye white
-    face.add(ball(0.0075, M.dark, sx * 0.032, 0.022, -0.089, 1, 1, 0.5));         // iris
-    const brow = cube(0.032, 0.006, 0.01, M.brow, sx * 0.033, 0.045, -0.088); brow.rotation.z = sx * -0.12; face.add(brow);
-    face.add(cube(0.03, 0.009, 0.006, M.dark, sx * 0.034, 0.002, -0.088)); // eye black
+    face.add(ball(0.0165, M.white, sx * 0.033, 0.02, -0.08, 1.1, 0.95, 0.6));     // eye white
+    face.add(ball(0.0105, M.iris, sx * 0.033, 0.019, -0.0875, 1, 1, 0.45));       // colored iris
+    face.add(ball(0.0052, M.dark, sx * 0.033, 0.019, -0.0905, 1, 1, 0.4));        // pupil
+    face.add(ball(0.0025, M.white, sx * 0.033 + 0.004, 0.0235, -0.0925));         // shine
+    face.add(ball(0.0185, M.lid, sx * 0.033, 0.03, -0.079, 1.15, 0.5, 0.68));     // upper eyelid
+    for (const [dx, dy, rz] of [[-0.012, 0.045, 0.25], [0.004, 0.049, 0.0], [0.018, 0.046, -0.3]]) {    // arched eyebrow
+      const b = cube(0.017, 0.0085, 0.01, M.brow, sx * (0.033 + dx), dy, -0.088); b.rotation.z = sx * -rz; face.add(b);
+    }
+    face.add(cube(0.03, 0.008, 0.006, M.dark, sx * 0.034, -0.004, -0.088)); // eye black
     face.add(ball(0.022, M.skin, sx * 0.045, -0.01, -0.07, 1, 0.8, 0.8)); // cheek
   }
   const nose = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.04, 8), M.skin);
@@ -273,9 +308,11 @@ export function createPlayer(skin) {
     elbow.add(cyl(0.039, 0.037, 0.05, M.tape, 0, -0.23, 0)); // wrist tape
     mergeGroup(elbow);
     const glove = createHand(skin.accent, side);
-    glove.position.y = -0.25; glove.rotation.y = side * Math.PI / 2;
+    glove.position.y = -0.25; glove.rotation.y = side * Math.PI / 2; glove.scale.setScalar(1.15);
     elbow.add(glove);
     const hand = new THREE.Group(); hand.position.set(0, -0.3, -0.02); elbow.add(hand);
+    sh.children[0].scale.set(1.2, 1, 1.2);      // heroic biceps
+    elbow.children[0].scale.set(1.15, 1, 1.15);  // and forearms
     sh.add(elbow);
     spine.add(sh);
     parts[side < 0 ? 'armL' : 'armR'] = sh;
@@ -302,6 +339,9 @@ export function createPlayer(skin) {
   root.add(chute);
   parts.chute = chute;
 
+  for (const c of head.children) c.scale.multiplyScalar(headScale);
+  for (const c of head.children) c.position.multiplyScalar(headScale);
+  const shadow = blobShadow(); root.add(shadow); parts.shadow = shadow;
   root.userData = { parts, walk: 0, held: null, heldCode: -1, numTex, owned: [hmat, numMat] };
   return root;
 }
@@ -336,6 +376,7 @@ export function animatePlayer(model, s, dt) {
   const u = model.userData, p = u.parts;
   const t = s.t || 0;
   p.chute.visible = s.phase === 3;
+  if (p.shadow) p.shadow.visible = s.phase === 0 || !s.phase;
   p.lasso.visible = s.emote === 7;
   let bx = 0, by = 0, bz = 0, bodyY = 0.98, sx = 0, sy = 0, hx = 0, hy = 0;
   let lL = 0, lR = 0, lLz = 0, lRz = 0, kL = -0.05, kR = -0.05;
