@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy · Football Royale</title>
+  <meta name="description" content="What Football Royale knows about you, in plain words. No ads, no selling data.">
+  <meta name="theme-color" content="#0d1830">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
+  <link rel="stylesheet" href="/css/pages.css">
+  <script type="module" src="/js/account-delete.js"></script>
+</head>
+<body>
+<main>
+  <div class="top"><img src="/icons/icon-192.png" alt=""><p class="logo">FOOTBALL <span>ROYALE</span></p></div>
+  <h1 class="page">Privacy</h1>
+  <p class="muted">Plain-language version. Last updated November 2026.</p>
+
+  <div class="card">
+    <b>The short version</b>
+    <ul class="big-points">
+      <li>🔒 We keep your <b>email only as a scrambled code</b> (a one-way hash). Nobody can read it, not even the admin.</li>
+      <li>🔑 Your <b>password is hashed</b> too. Nobody can see it.</li>
+      <li>👀 Your <b>username is public</b>: other players see it in matches. Don't use your real name.</li>
+      <li>🚫 <b>No ads. No selling or sharing your data.</b> No tracking or analytics companies.</li>
+      <li>💬 There is <b>no chat</b> with other players.</li>
+      <li>👨‍👩‍👧 <b>Under 13? You need a parent's or guardian's OK</b> before you sign up.</li>
+      <li>🗑️ You can <b>delete your account</b> any time (see below).</li>
+    </ul>
+  </div>
+
+  <h2>What we keep</h2>
+  <table>
+    <tr><th>What</th><th>Why</th><th>Who can see it</th></tr>
+    <tr><td>Username</td><td>So friends can find you and so you show up in matches</td><td>Everyone who plays</td></tr>
+    <tr><td>Email, as a one-way hash</td><td>To log in with your email and to stop two accounts using one email</td><td>Nobody (it can't be turned back into your email)</td></tr>
+    <tr><td>Password, as a one-way hash</td><td>To check your password when you log in</td><td>Nobody</td></tr>
+    <tr><td>Ball Bucks, items you own, wins, eliminations, matches played, the date you joined</td><td>To run the game</td><td>You; the game's admin sees usernames and game numbers only</td></tr>
+    <tr><td>A sign-in code saved in your browser</td><td>So you stay logged in for up to 30 days</td><td>Only your browser</td></tr>
+    <tr><td>Your outfit and settings, saved in your browser</td><td>So your player looks the same next time</td><td>Only your browser (and other players see your outfit in a match)</td></tr>
+  </table>
+  <p>We use your internet address (IP address) <b>only for a short time in memory</b> to stop spam and
+    password guessing. We don't save it with your account. The company that hosts our server may keep
+    normal server logs for a short time for security.</p>
+  <p>We don't use cookies for ads or tracking. We don't ask for your real name, address, phone number, photo, voice or location.</p>
+
+  <h2>Kids and parents</h2>
+  <p>Football Royale is made for players about 10 to 14. If you are <b>under 13</b>, a parent or guardian must say it's OK
+    before you make an account. The sign-up checkbox asks you to confirm this.</p>
+  <p><b>Parents:</b> we collect as little as possible (see the table above). Your child's email is stored only as a hash,
+    so we can't email them or read it. You can ask us to delete your child's account at any time: use the form below
+    with their username and password, or contact <span data-contact>the game's owner</span> with their username.
+    If we learn that a child under 13 signed up without a parent's OK, we will delete the account.</p>
+
+  <h2 id="delete">Delete your account</h2>
+  <p>This deletes your username, Ball Bucks, items and stats <b>forever</b>. It can't be undone.</p>
+  <form class="del" id="del-form" autocomplete="off">
+    <label>Username or email <input id="del-login" required maxlength="200" autocomplete="username"></label>
+    <label>Password <input id="del-pass" type="password" required maxlength="200" autocomplete="current-password"></label>
+    <label><input type="checkbox" id="del-sure" required> Yes, delete my account forever</label>
+    <button type="submit" id="del-go">Delete my account</button>
+    <div class="msg" id="del-msg" role="status"></div>
+  </form>
+  <p class="muted">Forgot your password? Contact <span data-contact>the game's owner</span> with your username and we will help.</p>
+
+  <h2>Changes</h2>
+  <p>If we change this page in a big way, we'll post it in the game's Updates box first.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about privacy? Contact <span data-contact>the game's owner</span>.</p>
+
+  <nav class="links"><a href="/">🏈 Back to the game</a><a href="/terms">Terms</a><a href="/credits">Credits</a></nav>
+</main>
+</body>
+</html>

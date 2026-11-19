@@ -1,0 +1,24 @@
+/* Simple reading pages: privacy, terms, credits */
+* { box-sizing: border-box; }
+html { background: #0d1830; }
+body { margin: 0; min-height: 100vh; color: #f2f4fa; font: 17px/1.6 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  background: radial-gradient(ellipse at 50% -10%, #3a2380 0%, #0d1830 60%) fixed; }
+main { max-width: 760px; margin: 0 auto; padding: 28px 18px 60px; }
+.top { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.top img { width: 56px; height: 56px; border-radius: 14px; }
+.logo { font-size: 30px; line-height: 1; margin: 0; font-style: italic; letter-spacing: 1px; text-shadow: 2px 2px 0 #ff5a2a; }
+.logo span { color: #ffcc33; }
+h1.page { font-size: 34px; margin: 18px 0 4px; }
+h2 { color: #ffcc33; font-size: 22px; margin: 28px 0 6px; }
+a { color: #ffcc33; }
+.card { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 14px 18px; margin: 14px 0; }
+.big-points li { margin: 6px 0; }
+.muted { opacity: .75; font-size: 14px; }
+nav.links { margin-top: 36px; display: flex; gap: 18px; flex-wrap: wrap; font-size: 15px; }
+form.del { display: grid; gap: 8px; max-width: 360px; }
+form.del input { font: inherit; padding: 9px 10px; border-radius: 8px; border: 0; }
+form.del button { font: inherit; font-weight: 800; padding: 10px 16px; border: 0; border-radius: 10px; background: #ff5a2a; color: #fff; cursor: pointer; }
+form.del button:disabled { opacity: .6; cursor: wait; }
+.msg { font-weight: 700; min-height: 1.4em; }
+.msg.err { color: #ff8a8a; } .msg.ok { color: #6be08a; }
+table { border-collapse: collapse; width: 100%; } td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.1); vertical-align: top; }

@@ -1,0 +1,23 @@
+{
+  "id": "/",
+  "name": "Football Royale",
+  "short_name": "FB Royale",
+  "description": "75 football players drop into the Giant Sports City. Gear up and be the last team standing!",
+  "start_url": "/?source=homescreen",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0d1830",
+  "theme_color": "#0d1830",
+  "categories": ["games", "sports", "kids"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/og.png", "sizes": "1200x630", "type": "image/png", "form_factor": "wide", "label": "The Locker Room in Football Royale" }
+  ]
+}

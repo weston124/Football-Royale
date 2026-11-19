@@ -4,7 +4,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Football Royale</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
+  <meta name="description" content="Free multiplayer football battle royale in your browser. 75 players drop into the Giant Sports City. Gear up, team up with friends and be the last one standing!">
+  <!-- share previews (the server makes these URLs absolute) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Football Royale">
+  <meta property="og:title" content="Football Royale 🏈👑">
+  <meta property="og:description" content="75 players. One champion. Free in your browser, nothing to download. Squad up with friends!">
+  <meta property="og:url" content="/">
+  <meta property="og:image" content="/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Football Royale: a football player in the Locker Room, ready to drop">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Football Royale 🏈👑">
+  <meta name="twitter:description" content="75 players. One champion. Free in your browser. Squad up with friends!">
+  <meta name="twitter:image" content="/og.png">
+  <!-- install to home screen (PWA) -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0d1830">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FB Royale">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
   <link rel="stylesheet" href="css/style.css">
   <script type="importmap">
     { "imports": {
@@ -127,6 +151,7 @@
         <button type="submit" class="big" id="a-go">LOG IN</button>
       </form>
       <div id="auth-error" class="error"></div>
+      <p class="legal-links" style="margin:10px 0 0;font-size:12px;opacity:.75;text-align:center"><a href="/privacy" target="_blank" style="color:inherit">Privacy</a> · <a href="/terms" target="_blank" style="color:inherit">Terms</a> · <a href="/credits" target="_blank" style="color:inherit">Credits</a> · No ads, ever</p>
     </div>
   </div>
 

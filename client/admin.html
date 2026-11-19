@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Football Royale Admin</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#0d1830">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👑</text></svg>">
   <style>
     :root { --bg: #0d1830; --card: #16264f; --line: #2b4180; --gold: #ffcc33; --pink: #ff3fa4; --text: #f4f6ff; --muted: #9fb0d8; }
@@ -139,7 +142,7 @@
       const q = $('acct-search').value.trim().toLowerCase();
       $('acct-count').textContent = lastAccounts.length;
       $('acct-list').innerHTML = lastAccounts.filter((a) => a.username.toLowerCase().includes(q)).slice(0, 200).map((a) =>
-        `<div class="item"><span>${lastOnline.has(a.username) ? '🟢' : '⚪'} <b>${esc(a.username)}</b>${a.isAdmin ? ' 👑' : ''}<br><small>🏈 ${a.bucks} · 🏆 ${a.wins} · elims ${a.kills} · joined ${new Date(a.created).toLocaleDateString()}</small></span><button class="ghost" style="flex:0;white-space:nowrap" data-admin="${esc(a.username)}" data-on="${a.isAdmin ? 0 : 1}">${a.isAdmin ? 'Remove admin' : '👑 Make admin'}</button></div>`).join('') || '<small style="color:var(--muted)">No players yet.</small>';
+        `<div class="item"><span>${lastOnline.has(a.username) ? '🟢' : '⚪'} <b>${esc(a.username)}</b>${a.isAdmin ? ' 👑' : ''}<br><small>🏈 ${a.bucks} · 🏆 ${a.wins} · elims ${a.kills} · joined ${new Date(a.created).toLocaleDateString()}</small></span><span style="flex:0;display:flex;gap:4px"><button class="ghost" style="white-space:nowrap" data-admin="${esc(a.username)}" data-on="${a.isAdmin ? 0 : 1}">${a.isAdmin ? 'Remove admin' : '👑 Make admin'}</button><button class="ghost" title="Delete this account forever" data-deluser="${esc(a.username)}">🗑️</button></span></div>`).join('') || '<small style="color:var(--muted)">No players yet.</small>';
     }
 
     async function api(action, body) {
@@ -198,6 +201,14 @@
     }
     $('acct-search').oninput = renderAccounts;
     $('acct-list').onclick = async (e) => {
+      const d = e.target.closest('button[data-deluser]');
+      if (d) {
+        const name = d.dataset.deluser;
+        const typed = prompt(`Delete ${name} forever? Their Ball Bucks, items and stats are gone and can't come back.\n\nType the username to confirm:`);
+        if (typed == null) return;
+        try { await api('deleteuser', { username: name, confirm: typed.trim() }); refresh(); } catch (err) { if (err.message !== 'auth') alert(err.message); }
+        return;
+      }
       const b = e.target.closest('button[data-admin]'); if (!b) return;
       const on = b.dataset.on === '1';
       if (!confirm(on ? `Give ${b.dataset.admin} the in-game admin menu?` : `Remove admin from ${b.dataset.admin}?`)) return;
