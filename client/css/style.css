@@ -93,7 +93,7 @@ input, select { background: #fff; color: #111; border: 0; border-radius: 8px; pa
 #mats { position: absolute; right: 20px; bottom: 24px; font-size: 20px; font-weight: 800; }
 #mats small { font-size: 12px; opacity: .8; display: block; }
 #center-msg { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 30px; font-weight: 900; }
-#emotes { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(5, 120px); gap: 10px; pointer-events: auto; }
+#emotes { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(4, 130px); gap: 10px; pointer-events: auto; }
 #emotes button { height: 90px; font-size: 14px; }
 #bigmap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(90vh, 90vw); height: min(90vh, 90vw); border: 4px solid #fff; border-radius: 14px; }
 #scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(10, 20, 50, .9); padding: 16px 24px; border-radius: 14px; min-width: 320px; }
@@ -128,3 +128,33 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .panel.party h1 { margin: 0; font-size: 36px; color: #ffcc33; }
 @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.03); } }
 #confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 58; }
+
+/* ===== Ball Bucks & Longhorn Item Shop ===== */
+.bucks-row { display: flex; gap: 8px; align-items: center; }
+.bucks { background: rgba(0,0,0,.35); border: 2px solid #ffcc33; border-radius: 20px; padding: 6px 12px; font-weight: 800; white-space: nowrap; }
+.bucks b { color: #ffcc33; }
+#open-shop { flex: 1; background: linear-gradient(90deg, #8a4b16, #c97a2b); color: #fff; box-shadow: 0 4px 0 #4d2a0c; }
+#tones { display: inline-flex; gap: 6px; vertical-align: middle; }
+#tones button { width: 26px; height: 26px; border-radius: 50%; padding: 0; box-shadow: none; border: 2px solid rgba(255,255,255,.3); }
+#tones button.sel { border: 3px solid #fff; }
+#shop { background: radial-gradient(ellipse at 50% 0%, #7a3d12 0%, #2a1408 60%, #120904 100%); z-index: 30; align-items: flex-start; overflow: auto; padding: 20px; }
+.shop-panel { width: min(1100px, 100%); display: flex; flex-direction: column; gap: 16px; }
+.shop-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.shop-head h2 { margin: 0; flex: 1; font-size: 38px; font-style: italic; color: #ffcc33; text-shadow: 3px 3px 0 #4d2a0c; }
+.shop-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.card { border-radius: 14px; overflow: hidden; background: #1c1008; border: 3px solid var(--rc, #888); display: flex; flex-direction: column; }
+.card .art { height: 200px; background: radial-gradient(circle at 50% 60%, var(--rc, #888) 0%, rgba(0,0,0,.6) 75%); display: flex; align-items: center; justify-content: center; }
+.card .art img { height: 100%; }
+.card .info { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.card .nm { font-weight: 900; font-size: 16px; }
+.card .meta { font-size: 12px; opacity: .75; }
+.card button { width: 100%; }
+.card button.owned { background: #4fd16b; color: #0b2a12; box-shadow: 0 4px 0 #2a8a3c; }
+.card button.cant { background: #555; color: #ddd; box-shadow: 0 4px 0 #333; }
+.shop-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.shop-foot > div { background: rgba(0,0,0,.35); border-radius: 12px; padding: 12px; }
+.shop-foot h3 { margin: 0 0 6px; }
+.packs { display: flex; gap: 8px; margin-bottom: 6px; }
+.packs button { flex: 1; opacity: .5; cursor: not-allowed; }
+#reward { position: fixed; top: 90px; left: 50%; transform: translateX(-50%); z-index: 57; background: rgba(0,0,0,.6); border: 2px solid #ffcc33; border-radius: 20px; padding: 8px 18px; font-weight: 900; font-size: 20px; color: #ffcc33; pointer-events: none; animation: drop .3s ease-out; }
+@media (max-width: 700px) { .shop-foot { grid-template-columns: 1fr; } }

@@ -4,7 +4,7 @@ import { World, stepPlayer, stepFalling, raycastWorld, rayPlayer, lineOfSight, p
 import { generateMap } from '../shared/map.js';
 import { makeRng } from '../shared/rng.js';
 import { WEAPONS, GUN_IDS, CONSUMABLES, RARITIES, weaponDamage } from '../shared/weapons.js';
-import { sanitizeSkin, SKIN_PRESETS, EMOTES } from '../shared/skins.js';
+import { sanitizeSkin, SKIN_PRESETS, EMOTES, canUseEmote, BUCKS } from '../shared/skins.js';
 import {
   TICK_RATE, MAX_PLAYERS, LOBBY_COUNTDOWN, PLAYER, DROP, MAX_HP, MAX_PADDING,
   ZONE_START_RADIUS, ZONE_PHASES, BUILD, PICKUP_RANGE, MAP_HALF, BOT_DIFFICULTY,
@@ -20,7 +20,8 @@ export const WCODES = ['tackle', ...GUN_IDS];
 let nextPlayerId = 1;
 
 export class Match {
-  constructor({ code, mode = 'nobuild', isPublic = false, difficulty = 'normal', onClose, kind = 'normal', title = '' }) {
+  constructor({ code, mode = 'nobuild', isPublic = false, difficulty = 'normal', onClose, kind = 'normal', title = '', onReward = null }) {
+    this.onReward = onReward; // (player, bucks, why, stat) -> gives Ball Bucks
     this.code = code;
     this.kind = kind; // 'normal' | 'partyRoyale' | 'island'
     this.title = title;
@@ -62,9 +63,10 @@ export class Match {
     };
   }
 
-  addHuman(ws, name, skin, team = 0) {
+  addHuman(ws, name, skin, team = 0, profile = null) {
     const p = this.newPlayer(name, skin, false);
     p.ws = ws;
+    p.profile = profile;
     p.team = team || -p.id;
     this.players.set(p.id, p);
     if (!this.hostId) this.hostId = p.id;
@@ -163,6 +165,7 @@ export class Match {
       if (p.bot) updateBot.init(this, p);
     }
     this.spawnLoot();
+    for (const p of this.humans) this.reward(p, BUCKS.match, 'joined a match', 'matches');
     this.zone = {
       ph: 0, st: 0, cx: 0, cz: 0, r: ZONE_START_RADIUS, fx: 0, fz: 0, fr: ZONE_START_RADIUS,
       tx: 0, tz: 0, tr: ZONE_PHASES[0].radius, t0: this.startTime + 25, end: 0,
@@ -177,6 +180,11 @@ export class Match {
     const b = this.blimp;
     const d = Math.min(b.len, (t - b.t0) * DROP.speed);
     return { x: b.x0 + b.dx * d, y: DROP.height, z: b.z0 + b.dz * d, done: d >= b.len };
+  }
+
+  reward(p, bucks, why, stat) {
+    if (p.bot || !p.profile || this.kind === 'island' || !this.onReward) return;
+    this.onReward(p, bucks, why, stat);
   }
 
   // ---------- loot ----------
@@ -308,7 +316,7 @@ export class Match {
   onInput(p, m) {
     if (typeof m.yaw === 'number') p.yaw = m.yaw;
     if (typeof m.pitch === 'number') p.pitch = Math.max(-1.6, Math.min(1.6, m.pitch));
-    p.emote = EMOTES.some((e) => e.id === m.em) ? m.em : 0;
+    p.emote = (p.bot ? EMOTES.some((e) => e.id === m.em) : canUseEmote(m.em, p.profile)) ? m.em : 0;
     if (p.phase === 'blimp') return;
     const x = +m.x, y = +m.y, z = +m.z;
     if (![x, y, z].every(Number.isFinite)) return;
@@ -482,7 +490,9 @@ export class Match {
     const remaining = this.alive.length;
     q.place = remaining + 1;
     q.phase = 'dead';
-    if (by && by !== q) by.kills++;
+    if (by && by !== q) { by.kills++; this.reward(by, BUCKS.perElim, 'elimination', 'kills'); }
+    if (wid !== 'quit' && q.place <= 10 && q.place > 1) this.reward(q, BUCKS.top10, `top ${q.place}`);
+    else if (wid !== 'quit' && q.place <= 25 && q.place > 1) this.reward(q, BUCKS.top25, `top ${q.place}`);
     this.events.push(['kf', by ? by.id : 0, q.id, wid || 'storm', head ? 1 : 0]);
     q.pev.push(['dead', q.place, by ? by.id : 0]);
     // fumble the loot
@@ -508,7 +518,7 @@ export class Match {
       if (w) w.place = 1;
       const top = [...this.players.values()].sort((a, b) => b.kills - a.kills).slice(0, 5).map((p) => [p.name, p.kills]);
       const names = alive.map((p) => p.name).join(' & ') || 'Nobody';
-      for (const p of alive) p.place = 1;
+      for (const p of alive) { p.place = 1; this.reward(p, BUCKS.win, 'VICTORY', 'wins'); }
       this.events.push(['win', w ? w.id : 0, names, w ? w.team : 0]);
       this.final = { t: 'end', winner: w ? w.id : 0, winnerName: names, team: w ? w.team : 0, top };
     }

@@ -77,6 +77,17 @@
     </section>
 
     <section class="card">
+      <h2>🏈 Gift Ball Bucks</h2>
+      <div class="row">
+        <select id="gift-who"></select>
+        <input type="number" id="gift-amt" min="1" max="100000" value="500" style="max-width:120px">
+      </div>
+      <div class="row"><button id="gift-btn">🎁 Gift</button><button id="gift-all" class="ghost" style="flex:0;white-space:nowrap">Gift everyone online</button></div>
+      <div class="msg" id="gift-msg"></div>
+      <small style="color:var(--muted)">Players earn Ball Bucks by playing. Buying with real money is turned off. <span id="s-profiles"></span></small>
+    </section>
+
+    <section class="card">
       <h2>📢 Message everyone</h2>
       <textarea id="bc-text" maxlength="200" placeholder="Shows up at the top of every player's screen, even mid-match!"></textarea>
       <div class="row styles" id="bc-style">
@@ -147,6 +158,10 @@
       try { s = await api('state'); } catch { return; }
       $('s-online').textContent = s.online; $('s-match').textContent = s.inMatch; $('s-rooms').textContent = s.matches.length;
       $('matches').innerHTML = s.matches.map((m) => `<div class="item"><span><b>${m.code}</b> · ${m.kind === 'normal' ? (m.mode === 'build' ? 'Build' : 'No-Build') : m.kind === 'island' ? '🏝️ Party Island' : '🎉 Party Royale'}</span><small>${m.state} · ${m.humans} real players${m.alive != null ? ` · ${m.alive} alive` : ''}</small></div>`).join('') || '<small style="color:var(--muted)">No matches right now.</small>';
+      const sel = $('gift-who').value;
+      $('gift-who').innerHTML = s.players.map((p) => `<option value="${esc(p.name)}">${esc(p.name)} (${p.bucks} BB${p.inMatch ? ', in match' : ''})</option>`).join('') || '<option value="">Nobody online</option>';
+      if (sel) $('gift-who').value = sel;
+      $('s-profiles').textContent = `${s.profiles} player profiles saved.`;
       $('news-list').innerHTML = s.news.map((n) => `<div class="item"><span><b>${esc(n.title)}</b><br><small>${new Date(n.date).toLocaleString()}</small></span><span style="flex:0;display:flex;gap:4px"><button class="ghost" data-edit="${n.id}">Edit</button><button class="ghost" data-del="${n.id}">🗑️</button></span></div>`).join('');
       $('news-list').dataset.items = JSON.stringify(s.news);
       $('ev-list').innerHTML = s.allEvents.slice().sort((a, b) => a.time - b.time).map((e) => `<div class="item"><span><b>${esc(e.title)}</b><br><small>${new Date(e.time).toLocaleString()} · ${e.kind === 'island' ? 'Party Island' : 'Party Royale'}${e.fired ? ' · ✅ done' : ''}</small></span><button class="ghost" data-evdel="${e.id}" style="flex:0">🗑️</button></div>`).join('') || '<small style="color:var(--muted)">Nothing scheduled.</small>';
@@ -162,6 +177,12 @@
     };
     $('end-party').onclick = async () => { if (!confirm('End all party matches and lobbies?')) return; await api('endparty', {}); flash('party-msg', 'Parties ended.'); refresh(); };
 
+    async function gift(name) {
+      try { const r = await api('gift', { name, amount: +$('gift-amt').value }); flash('gift-msg', `🎁 Sent to ${r.sent} player${r.sent === 1 ? '' : 's'}!`); refresh(); }
+      catch (e) { if (e.message !== 'auth') flash('gift-msg', e.message, true); }
+    }
+    $('gift-btn').onclick = () => gift($('gift-who').value);
+    $('gift-all').onclick = () => { if (confirm('Gift every player online?')) gift('*'); };
     $('bc-style').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; bcStyle = b.dataset.v; [...$('bc-style').children].forEach((x) => x.classList.toggle('on', x === b)); };
     $('bc-send').onclick = async () => {
       try { const r = await api('broadcast', { text: $('bc-text').value, style: bcStyle }); flash('bc-msg', `Sent to ${r.sent} player${r.sent === 1 ? '' : 's'}!`); $('bc-text').value = ''; }

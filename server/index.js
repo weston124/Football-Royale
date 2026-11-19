@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Match } from './match.js';
 import { createAdmin } from './admin.js';
+import { createProfiles } from './profiles.js';
 import { MAX_PLAYERS } from '../shared/constants.js';
 import { sanitizeSkin } from '../shared/skins.js';
 
@@ -21,7 +22,8 @@ const MOUNTS = [
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon' };
 
 // ---------- the hub: everyone connected, rooms and parties ----------
-const clients = new Set();   // { ws, name, skin, match, player, party }
+const clients = new Set();   // { ws, name, skin, match, player, party, profile }
+const profiles = createProfiles(ROOT);
 const rooms = new Map();     // code -> Match
 const parties = new Map();   // code -> { code, leader, members:Set }
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -34,12 +36,20 @@ function newCode(taken) {
 }
 function createMatch(opts) {
   const code = opts.code || newCode(rooms);
-  const m = new Match({ ...opts, code, onClose: (mm) => {
+  const m = new Match({ ...opts, code, onReward, onClose: (mm) => {
     rooms.delete(mm.code);
     for (const c of clients) if (c.match === mm) { c.match = null; c.player = null; }
   } });
   rooms.set(code, m);
   return m;
+}
+function sendProfile(c) {
+  if (c.profile) send(c, { t: 'profile', token: c.token, ...profiles.publicView(c.profile) });
+}
+// Ball Bucks earned in a match
+function onReward(player, bucks, why, stat) {
+  profiles.award(player.profile, bucks, stat);
+  for (const c of clients) if (c.profile === player.profile) { send(c, { t: 'reward', bucks, why, total: c.profile.bucks }); sendProfile(c); }
 }
 const send = (c, obj) => { if (c.ws.readyState === 1) c.ws.send(typeof obj === 'string' ? obj : JSON.stringify(obj)); };
 
@@ -50,7 +60,20 @@ const hub = {
       inMatch: [...clients].filter((c) => c.match).length,
       matches: [...rooms.values()].map((m) => ({ code: m.code, kind: m.kind, mode: m.mode, state: m.state, humans: m.humans.length, alive: m.state === 'play' ? m.alive.length : null })),
       parties: parties.size,
+      players: [...clients].filter((c) => c.profile).map((c) => ({ name: c.name, bucks: c.profile.bucks, inMatch: !!c.match })),
+      profiles: profiles.count(),
     };
+  },
+  gift(name, amount) {
+    let n = 0;
+    for (const c of clients) {
+      if (!c.profile || (name !== '*' && c.name !== name)) continue;
+      profiles.award(c.profile, amount);
+      send(c, { t: 'reward', bucks: amount, why: 'a gift from the admin 🎁', total: c.profile.bucks });
+      sendProfile(c);
+      n++;
+    }
+    return n;
   },
   broadcast(text, style = 'info') {
     const msg = JSON.stringify({ t: 'bc', text, style });
@@ -96,7 +119,7 @@ function leaveParty(c) {
 
 function joinMatch(c, m, team) {
   c.match = m;
-  c.player = m.addHuman(c.ws, c.name, c.skin, team);
+  c.player = m.addHuman(c.ws, c.name, c.skin, team, c.profile);
 }
 
 // ---------- http ----------
@@ -151,10 +174,25 @@ wss.on('connection', (ws) => {
     }
 
     switch (m.t) {
-      case 'hello':
-        c.name = cleanName(m.name); c.skin = sanitizeSkin(m.skin);
+      case 'hello': {
+        if (!c.profile || (m.token && m.token !== c.token)) {
+          const { token, profile } = profiles.login(m.token);
+          c.token = token; c.profile = profile;
+        }
+        c.name = cleanName(m.name); c.profile.name = c.name;
+        c.skin = sanitizeSkin(m.skin, c.profile);
+        sendProfile(c);
         if (c.party) pushParty(c.party);
         return;
+      }
+      case 'buy': {
+        if (!c.profile) return;
+        const problem = profiles.buy(c.profile, String(m.item || ''));
+        if (problem) return err(c, problem);
+        send(c, { t: 'bought', item: m.item });
+        sendProfile(c);
+        return;
+      }
       case 'party_create': {
         leaveParty(c);
         const p = { code: newCode(parties), leader: c, members: new Set([c]), team: partyTeamSeq++ };
@@ -171,7 +209,7 @@ wss.on('connection', (ws) => {
       }
       case 'party_leave': return leaveParty(c);
       case 'join': {
-        c.name = cleanName(m.name); c.skin = sanitizeSkin(m.skin);
+        c.name = cleanName(m.name); c.skin = sanitizeSkin(m.skin, c.profile || null);
         const mode = m.mode === 'build' ? 'build' : 'nobuild';
         const party = c.party;
         if (party && party.leader !== c && !m.room) return err(c, 'Only your party leader can start. Or leave the party.');

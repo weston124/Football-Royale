@@ -107,6 +107,13 @@ export function createAdmin({ root, hub }) {
         const code = hub.globalParty(b.kind === 'island' ? 'island' : 'royale', clean(b.title, 80) || 'GLOBAL PARTY!');
         return json(200, { ok: true, code });
       }
+      case 'gift': {
+        const amount = Math.round(Number(b.amount));
+        if (!Number.isFinite(amount) || amount < 1 || amount > 100000) return json(400, { error: 'Pick an amount from 1 to 100,000' });
+        const n = hub.gift(b.name === '*' ? '*' : clean(b.name, 16), amount);
+        if (!n) return json(400, { error: 'That player is not online right now' });
+        return json(200, { ok: true, sent: n });
+      }
       case 'endparty': hub.endParties(); return json(200, { ok: true });
       default: return json(404, { error: 'Unknown action' });
     }

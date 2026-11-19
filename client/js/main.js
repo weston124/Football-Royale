@@ -1,7 +1,8 @@
 // Locker Room (menu), squads, news, broadcasts, party pop-ups and starting matches.
 import * as THREE from 'three';
 import { generateMap } from '/shared/map.js';
-import { SKIN_PRESETS, sanitizeSkin } from '/shared/skins.js';
+import { SKIN_PRESETS, SKIN_TONES, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
+import { RARITIES } from '/shared/weapons.js';
 import { createPlayer, animatePlayer, disposePlayer } from './models.js';
 import { drawMapImage } from './world.js';
 import { Hud } from './hud.js';
@@ -21,8 +22,10 @@ profile.name = profile.name || '';
 profile.mode = profile.mode || 'nobuild';
 profile.skin = sanitizeSkin(profile.skin || { preset: 'llamas', number: Math.floor(Math.random() * 99) + 1 });
 const settings = { sens: store.get('fr_sens', 1) };
-const stats = () => store.get('fr_stats', { wins: 0, kills: 0, matches: 0 });
-const saveProfile = () => { store.set('fr_profile', profile); net.send({ t: 'hello', name: profile.name, skin: profile.skin }); };
+let account = { bucks: 0, owned: [], stats: { wins: 0, kills: 0, matches: 0 } }; // from the server
+const stats = () => account.stats;
+const hello = () => ({ t: 'hello', token: store.get('fr_token', null), name: profile.name, skin: profile.skin });
+const saveProfile = () => { store.set('fr_profile', profile); net.send(hello()); };
 
 // ---------- network ----------
 const net = {
@@ -32,7 +35,7 @@ const net = {
     this.ws = ws;
     ws.onopen = () => {
       $('menu-error').textContent = '';
-      ws.send(JSON.stringify({ t: 'hello', name: profile.name, skin: profile.skin }));
+      ws.send(JSON.stringify(hello()));
       for (const m of this.queue) ws.send(m);
       this.queue = [];
     };
@@ -87,6 +90,7 @@ function refreshPreview() {
   $('skin-team').textContent = preset ? preset.team : '';
   $('c-jersey').value = profile.skin.jersey; $('c-accent').value = profile.skin.accent;
   $('c-helmet').value = profile.skin.helmet; $('c-number').value = profile.skin.number;
+  [...$('tones').children].forEach((b) => b.classList.toggle('sel', b.dataset.t === profile.skin.tone));
 }
 function previewLoop(ts) {
   if (!previewRunning) return;
@@ -100,13 +104,9 @@ function previewLoop(ts) {
   pr.render(pScene, pCam);
 }
 
-function unlocked(p) {
-  if (!p.unlock) return true;
-  const s = stats();
-  return (!p.unlock.wins || (s.wins || 0) >= p.unlock.wins) && (!p.unlock.kills || (s.kills || 0) >= p.unlock.kills);
-}
+function unlocked(p) { return canUseSkin(p, account); }
 function renderSkins() {
-  $('skins').innerHTML = SKIN_PRESETS.map((p) => {
+  $('skins').innerHTML = SKIN_PRESETS.filter((p) => !p.price || unlocked(p)).map((p) => {
     const ok = unlocked(p);
     const req = p.unlock ? (p.unlock.wins ? `${p.unlock.wins} win${p.unlock.wins > 1 ? 's' : ''}` : `${p.unlock.kills} elims`) : '';
     return `<button data-id="${p.id}" class="${profile.skin.preset === p.id ? 'sel' : ''} ${ok ? '' : 'locked'}" title="${esc(p.team)}${ok ? '' : ' — unlock with ' + req}"
@@ -116,14 +116,19 @@ function renderSkins() {
 $('skins').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   const p = SKIN_PRESETS.find((x) => x.id === b.dataset.id);
-  if (!unlocked(p)) { $('menu-error').textContent = `🔒 ${p.team} unlocks with ${p.unlock.wins ? p.unlock.wins + ' win(s)' : p.unlock.kills + ' eliminations'}!`; return; }
-  profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number });
+  if (!unlocked(p)) { if (p.price) return openShop(); $('menu-error').textContent = `🔒 ${p.team} unlocks with ${p.unlock.wins ? p.unlock.wins + ' win(s)' : p.unlock.kills + ' eliminations'}!`; return; }
+  profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone });
   saveProfile(); renderSkins(); refreshPreview();
 };
 for (const k of ['jersey', 'accent', 'helmet']) {
   $(`c-${k}`).oninput = (e) => { profile.skin[k] = e.target.value; if (k === 'helmet') profile.skin.stripe = profile.skin.accent; refreshPreview(); };
   $(`c-${k}`).onchange = saveProfile;
 }
+$('tones').innerHTML = SKIN_TONES.map((t) => `<button data-t="${t}" style="background:${t}"></button>`).join('');
+$('tones').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  profile.skin.tone = b.dataset.t; saveProfile(); refreshPreview();
+};
 $('c-number').onchange = (e) => { profile.skin = sanitizeSkin({ ...profile.skin, number: e.target.value }); saveProfile(); refreshPreview(); };
 
 function renderStats() {
@@ -204,6 +209,7 @@ net.on('start', (m) => {
     game = new Game({
       renderer, map, hud, net, myId, mode: currentRoom.mode, kind: currentRoom.kind, mySkin: profile.skin, settings,
       onLeave: () => { game = null; showScreen('menu'); },
+      emotes: EMOTES.filter((e) => canUseEmote(e.id, account)),
     });
     game.start(m);
     renderer.domElement.requestPointerLock?.();
@@ -217,6 +223,7 @@ net.on('closed', () => {
 });
 net.on('error', (m) => {
   $('menu-error').textContent = m.msg;
+  if (!$('shop').classList.contains('hidden')) $('shop-msg').textContent = m.msg;
   if (game) hud.toast(m.msg);
   if (!game && !$('lobby').classList.contains('hidden')) showScreen('menu');
 });
@@ -292,6 +299,88 @@ function confettiLoop(t) {
   if (bits.length || t < confettiUntil) requestAnimationFrame(confettiLoop);
   else { confettiOn = false; cg.clearRect(0, 0, cc.width, cc.height); }
 }
+
+// ---------- Ball Bucks & the Longhorn Item Shop ----------
+net.on('profile', (m) => {
+  store.set('fr_token', m.token);
+  account = { bucks: m.bucks, owned: m.owned, stats: m.stats };
+  $('bucks').textContent = m.bucks.toLocaleString();
+  $('shop-bucks').textContent = m.bucks.toLocaleString();
+  // if the server swapped us off a locked outfit, follow it
+  if (!canUseSkin(SKIN_PRESETS.find((p) => p.id === profile.skin.preset), account)) {
+    profile.skin = sanitizeSkin(profile.skin, account); store.set('fr_profile', profile); refreshPreview();
+  }
+  renderStats();
+  if (!$('shop').classList.contains('hidden')) renderShop();
+});
+let rewardTimer = 0;
+net.on('reward', (m) => {
+  const el = $('reward');
+  el.textContent = `+${m.bucks} Ball Bucks · ${m.why}`;
+  el.classList.remove('hidden');
+  clearTimeout(rewardTimer);
+  rewardTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+});
+net.on('bought', (m) => {
+  const item = SHOP.find((i) => i.id === m.item);
+  sfx.chest(); confetti(1800);
+  $('shop-msg').textContent = '';
+  if (item && item.kind === 'skin') {
+    const p = SKIN_PRESETS.find((x) => x.id === item.id);
+    profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone });
+    saveProfile(); refreshPreview();
+  }
+});
+const artCache = new Map();
+function itemArt(item) {
+  if (artCache.has(item.id)) return artCache.get(item.id);
+  const skin = item.kind === 'skin'
+    ? sanitizeSkin({ ...SKIN_PRESETS.find((p) => p.id === item.id), preset: item.id, number: 1 + (item.price % 97), tone: profile.skin.tone })
+    : { ...profile.skin, horns: profile.skin.horns || '#f3ead2' };
+  const m = createPlayer(skin);
+  m.rotation.y = Math.PI + 0.35;
+  animatePlayer(m, { speed: 0, phase: 0, emote: item.emote || 3, emoteT: item.emote === 8 ? 2.4 : 0.55, t: 1 }, 1 / 60);
+  const was = pModel; if (pModel) pModel.visible = false;
+  pScene.add(m);
+  pr.render(pScene, pCam);
+  const url = pr.domElement.toDataURL();
+  pScene.remove(m); disposePlayer(m);
+  if (was) was.visible = true;
+  artCache.set(item.id, url);
+  return url;
+}
+function renderShop() {
+  $('shop-items').innerHTML = SHOP.map((item) => {
+    const r = RARITIES[item.rarity || 0];
+    const owned = account.owned.includes(item.id);
+    const afford = account.bucks >= item.price;
+    return `<div class="card" style="--rc:${r.color}">
+      <div class="art"><img src="${itemArt(item)}" alt=""></div>
+      <div class="info">
+        <div class="nm">${esc(item.name)}</div>
+        <div class="meta">${r.name} ${item.kind === 'skin' ? 'Outfit' : 'Emote'}</div>
+        <button data-buy="${item.id}" class="${owned ? 'owned' : afford ? '' : 'cant'}">${owned ? '✅ Owned' : `🏈 ${item.price.toLocaleString()}`}</button>
+      </div></div>`;
+  }).join('');
+}
+function openShop() {
+  initAudio();
+  $('shop-msg').textContent = '';
+  $('shop').classList.remove('hidden');
+  renderShop();
+}
+$('open-shop').onclick = openShop;
+$('close-shop').onclick = () => { $('shop').classList.add('hidden'); renderSkins(); };
+$('shop-items').onclick = (e) => {
+  const b = e.target.closest('button[data-buy]'); if (!b) return;
+  const item = SHOP.find((i) => i.id === b.dataset.buy);
+  if (account.owned.includes(item.id)) {
+    if (item.kind === 'skin') { $('close-shop').click(); const p = SKIN_PRESETS.find((x) => x.id === item.id); profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone }); saveProfile(); refreshPreview(); renderSkins(); }
+    return;
+  }
+  if (account.bucks < item.price) { $('shop-msg').textContent = `You need ${(item.price - account.bucks).toLocaleString()} more Ball Bucks. Keep playing to earn more!`; return; }
+  if (confirm(`Buy ${item.name} for ${item.price.toLocaleString()} Ball Bucks?`)) net.send({ t: 'buy', item: item.id });
+};
 
 // debug hook for automated tests
 window.__fr = { get game() { return game; } };

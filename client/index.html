@@ -21,6 +21,10 @@
     <div class="menu-left">
       <h1 class="logo">FOOTBALL<br><span>ROYALE</span></h1>
       <p class="tag">75 players. One champion. Drop in, gear up, be the last one standing!</p>
+      <div class="bucks-row">
+        <span class="bucks">🏈 <b id="bucks">0</b> Ball Bucks</span>
+        <button id="open-shop">🐂 LONGHORN ITEM SHOP</button>
+      </div>
 
       <label class="lbl">Your name</label>
       <input id="name" maxlength="16" placeholder="Rookie">
@@ -87,6 +91,7 @@
         <label>Helmet <input type="color" id="c-helmet"></label>
         <label>Number <input type="number" id="c-number" min="0" max="99" value="12"></label>
       </div>
+      <div class="custom">Skin tone <span id="tones"></span></div>
     </div>
     <div class="menu-news">
       <div id="events"></div>
@@ -167,6 +172,37 @@
       <button id="victory-leave" class="big">Back to Locker Room</button>
     </div>
   </div>
+
+  <!-- ===== LONGHORN ITEM SHOP ===== -->
+  <div id="shop" class="screen hidden">
+    <div class="shop-panel">
+      <div class="shop-head">
+        <h2>🐂 LONGHORN ITEM SHOP</h2>
+        <span class="bucks">🏈 <b id="shop-bucks">0</b> Ball Bucks</span>
+        <button id="close-shop">✖ Close</button>
+      </div>
+      <div id="shop-items" class="shop-items"></div>
+      <div class="shop-foot">
+        <div class="earn">
+          <h3>How to earn Ball Bucks (free)</h3>
+          <div>🏈 +10 per elimination · 🏆 +100 for a Victory · 🔟 +20 for Top 10 · 🎮 +5 per match</div>
+        </div>
+        <div class="buy">
+          <h3>Get Ball Bucks</h3>
+          <div class="packs">
+            <button disabled>$1<br><b>100</b></button>
+            <button disabled>$5<br><b>500</b></button>
+            <button disabled>$10<br><b>1,000</b></button>
+            <button disabled>$20<br><b>2,000</b></button>
+          </div>
+          <small>🔒 Coming soon. Buying with real money needs a parent to set it up first.</small>
+        </div>
+      </div>
+      <div id="shop-msg" class="error"></div>
+    </div>
+  </div>
+
+  <div id="reward" class="hidden"></div>
 
   <div id="loading" class="screen hidden"><div class="panel"><h2>Loading the Giant Sports City…</h2></div></div>
 

@@ -19,7 +19,8 @@ const dirFrom = (yaw, pitch) => { const c = Math.cos(pitch); return [-Math.sin(y
 const nowS = () => performance.now() / 1000;
 
 export class Game {
-  constructor({ renderer, map, hud, net, myId, mode, kind, mySkin, settings, onLeave }) {
+  constructor({ renderer, map, hud, net, myId, mode, kind, mySkin, settings, onLeave, emotes }) {
+    this.myEmotes = emotes || EMOTES.filter((e) => !e.price);
     this.renderer = renderer; this.map = map; this.hud = hud; this.net = net;
     this.myId = myId; this.mode = mode; this.kind = kind; this.mySkin = mySkin;
     this.settings = settings; this.onLeave = onLeave;
@@ -70,11 +71,12 @@ export class Game {
     this.vmCam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 10);
     this.vm = new THREE.Group(); this.vmScene.add(this.vm);
     this.vmHeld = null; this.vmCode = '';
-    const sleeve = mat(this.mySkin.jersey), glove = mat(this.mySkin.accent);
+    const skinMat = mat(this.mySkin.tone || '#c98e62'), glove = mat(this.mySkin.accent), tape = mat('#ffffff');
     const arm = (x) => {
       const g = new THREE.Group();
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.5), sleeve); s.position.z = 0.15; g.add(s);
-      const h = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.12), glove); h.position.z = -0.12; g.add(h);
+      const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.42, 4, 10), skinMat); fore.rotation.x = Math.PI / 2; fore.position.z = 0.16; g.add(fore);
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.056, 0.06, 10), tape); t.rotation.x = Math.PI / 2; t.position.z = -0.06; g.add(t);
+      const h = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 10), glove); h.scale.set(0.9, 0.85, 1.15); h.position.z = -0.13; g.add(h);
       g.position.set(x, -0.05, 0); return g;
     };
     this.vmArmR = arm(0.06); this.vmArmL = arm(-0.16); this.vmArmL.rotation.y = -0.5;
@@ -143,14 +145,14 @@ export class Game {
     $('dead-leave').onclick = () => this.leave();
     $('victory-leave').onclick = () => this.leave();
     // emote buttons
-    $('emotes').innerHTML = EMOTES.map((e) => `<button data-e="${e.id}"><b>${e.id}</b><br>${e.name}</button>`).join('');
+    $('emotes').innerHTML = this.myEmotes.map((e, i) => `<button data-e="${e.id}"><b>${i + 1}</b><br>${e.name}${e.price ? ' 🐂' : ''}</button>`).join('');
     $('emotes').onclick = (ev) => { const b = ev.target.closest('button'); if (b) this.startEmote(+b.dataset.e); };
   }
 
   onKey(code) {
     if (this.emoteMenu) {
       const n = code.startsWith('Digit') ? +code.slice(5) : 0;
-      if (n >= 1 && n <= EMOTES.length) this.startEmote(n);
+      if (n >= 1 && n <= this.myEmotes.length) this.startEmote(this.myEmotes[n - 1].id);
       if (code === 'KeyG' || code === 'Escape') this.toggleEmoteMenu(false);
       return;
     }
@@ -539,8 +541,9 @@ export class Game {
     if (!e.model) {
       e.model = createPlayer(skin); this.scene.add(e.model);
       const lod = new THREE.Group();
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.5), mat(skin.jersey)); b.position.y = 0.8; lod.add(b);
-      const h = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), mat(skin.helmet)); h.position.y = 1.75; lod.add(h);
+      const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.6, 2, 6), mat(skin.pants)); legs.position.y = 0.55; lod.add(legs);
+      const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.35, 2, 6), mat(skin.jersey)); b.position.y = 1.3; lod.add(b);
+      const h = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat(skin.helmet)); h.position.y = 1.8; lod.add(h);
       e.lod = lod; this.scene.add(lod);
       const showTag = this.kind === 'island' || (r && r.team === this.myTeam);
       if (showTag && r) { e.tag = nameTag(r.name, r.team === this.myTeam ? '#3fa2ff' : '#ffffff'); this.scene.add(e.tag); }
