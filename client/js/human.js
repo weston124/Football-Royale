@@ -2,6 +2,8 @@
 // The uniform is painted onto the body; helmet, face mask, pads and eyes are added on top.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makeRng } from '/shared/rng.js';
 
 let DATA = null;          // { info, attrs }
 let MATS = null;          // shared materials
@@ -9,7 +11,9 @@ let BONE_INV = null;      // shared bind inverses
 let CHEST = null;         // chest surface for jersey numbers
 let FEET = null;
 let WAIST = null;
-let JERSEY_GEO = null;    // loose jersey shell over the shoulder pads          // foot boxes for the cleats
+let JERSEY_GEO = null;
+let HEAD = null;          // head shape for hair
+let MOUTH = null;         // where the smile goes    // loose jersey shell over the shoulder pads          // foot boxes for the cleats
 
 const SKIN = 0, JERSEY = 1, PANTS = 2, SOCK = 3, SHOE = 4, GLOVE = 5, ACCENT = 6, BROW = 7, LIPS = 8, EYEBLACK = 9, TAPE = 10, LASH = 11;
 
@@ -66,6 +70,20 @@ export async function loadHuman(base = '/assets/') {
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.2, 0), 1);
     JERSEY_GEO = g;
   }
+  // head shape (for hair) and mouth (for the smile)
+  {
+    const eyeY = info.meta.eyes.L.c[1];
+    const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+    let lx = 0, ly = 0, lz = 1e9, ln = 0;
+    for (let i = 0; i < n; i++) {
+      const y = p[i * 3 + 1];
+      if (y < eyeY - 0.13 || ![SKIN, BROW, LIPS, EYEBLACK].includes(reg[i])) continue;
+      for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], p[i * 3 + a]); mx[a] = Math.max(mx[a], p[i * 3 + a]); }
+      if (reg[i] === LIPS) { lx += p[i * 3]; ly += y; lz = Math.min(lz, p[i * 3 + 2]); ln++; }
+    }
+    HEAD = { c: [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2 + 0.02, (mn[2] + mx[2]) / 2], r: [(mx[0] - mn[0]) / 2, (mx[1] - mn[1]) / 2 - 0.02, (mx[2] - mn[2]) / 2], top: mx[1], eyeY };
+    MOUTH = ln ? { x: lx / ln, y: ly / ln, z: lz } : { x: 0, y: eyeY - 0.075, z: info.meta.eyes.L.c[2] - 0.01 };
+  }
   // waist ring for the belt
   const wy = info.meta.waistY - 0.015;
   const wmn = [1e9, 1e9], wmx = [-1e9, -1e9];
@@ -93,8 +111,8 @@ function regionColors(skin) {
   const tone = c(skin.tone || '#c98e62');
   const map = {
     [SKIN]: tone, [JERSEY]: c(skin.jersey), [PANTS]: c(skin.pants), [SOCK]: c(skin.accent), [SHOE]: c('#161616'),
-    [GLOVE]: c(skin.accent), [ACCENT]: c(skin.accent), [BROW]: c('#2a1a10'), [LIPS]: tone.clone().lerp(c('#a0524a'), 0.45),
-    [EYEBLACK]: c('#111111'), [TAPE]: c('#f2f2f2'), [LASH]: c('#1a120c'),
+    [GLOVE]: c(skin.accent), [ACCENT]: c(skin.accent), [BROW]: tone, [LIPS]: tone.clone().lerp(c('#a0524a'), 0.45),
+    [EYEBLACK]: skin.helmetOn === false ? tone : c('#111111'), [TAPE]: c('#f2f2f2'), [LASH]: c('#1a120c'),
   };
   return map;
 }
@@ -169,6 +187,65 @@ function buildEye(r, iris) {
 
 const IRIS = ['#4a2e1c', '#2f5f8a', '#3f6b3a', '#6b4a2a', '#5a4632'];
 
+// Hair: lots of small soft clumps laid over the scalp. Returns { top, low } meshes
+// (top hides under the helmet; low is what sticks out the back).
+function buildHair(skin) {
+  const style = skin.hairStyle || 'wavy';
+  const rnd = makeRng(style.length * 7919 + 13);
+  const { c, r, eyeY } = HEAD;
+  const cut = eyeY - 0.045;
+  const tops = [[], []], lows = [[], []];
+  const up = new THREE.Vector3(0, 1, 0);
+  if (style === 'buzz') {
+    const g = new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, 1.45);
+    g.scale(r[0] + 0.006, r[1] + 0.006, r[2] + 0.006); g.rotateX(-0.32); g.translate(c[0], c[1] - 0.005, c[2] + 0.004);
+    tops[0].push(g);
+  } else {
+    const count = style === 'short' ? 170 : style === 'flow' ? 260 : 230;
+    const size = style === 'short' ? [0.018, 0.026] : [0.022, 0.034];
+    for (let i = 0; i < count; i++) {
+      // random point on the upper/back part of the head
+      const th = Math.acos(1 - rnd() * (style === 'flow' ? 1.35 : 1.15)), ph = rnd() * Math.PI * 2;
+      const d = new THREE.Vector3(Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph));
+      const pos = new THREE.Vector3(c[0] + d.x * r[0], c[1] + d.y * r[1], c[2] + d.z * r[2]);
+      const front = d.z < -0.3, side = Math.abs(d.x) > 0.7;
+      if (front && pos.y < eyeY + 0.055 + (Math.abs(d.x) * 0.02)) continue;         // keep the face clear (hairline)
+      if (side && pos.y < eyeY + 0.01 && d.z < 0.15) continue;                      // ears
+      if (style !== 'flow' && pos.y < eyeY - 0.02) continue;
+      const nrm = new THREE.Vector3(d.x / r[0], d.y / r[1], d.z / r[2]).normalize();
+      const rad = size[0] + rnd() * (size[1] - size[0]);
+      const g = new THREE.SphereGeometry(rad, 7, 5);
+      g.scale(1.4, 0.42, 1.0);
+      const q = new THREE.Quaternion().setFromUnitVectors(up, nrm);
+      q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rnd() * Math.PI * 2, (rnd() - 0.5) * (style === 'wavy' ? 0.9 : 0.4))));
+      g.applyQuaternion(q);
+      const out = pos.clone().addScaledVector(nrm, rad * 0.12);
+      if (front && style !== 'short') out.y -= 0.008, out.z -= 0.006;               // fringe sweeps forward
+      g.translate(out.x, out.y, out.z);
+      (out.y < cut && d.z > 0 ? lows : tops)[rnd() < 0.72 ? 0 : 1].push(g);
+    }
+    if (style === 'flow') { // longer locks curling out under the back of the helmet
+      for (let i = 0; i < 16; i++) {
+        const a = Math.PI * (0.15 + 0.7 * (i / 15));
+        const g = new THREE.SphereGeometry(0.024 + rnd() * 0.008, 7, 5);
+        g.scale(1, 1.6, 0.55);
+        g.rotateX(0.5); g.rotateZ((i / 25 - 0.5) * 0.8);
+        g.translate(c[0] + Math.cos(a) * r[0] * 0.95, cut - 0.03 - rnd() * 0.02, c[2] + Math.sin(a) * r[2] * 0.85 + 0.01);
+        lows[rnd() < 0.7 ? 0 : 1].push(g);
+      }
+    }
+  }
+  const base = new THREE.Color(skin.hair || '#8a6239');
+  const mats = [new THREE.MeshStandardMaterial({ color: base, roughness: 0.82 }),
+    new THREE.MeshStandardMaterial({ color: base.clone().lerp(new THREE.Color('#ffffff'), 0.18), roughness: 0.75 })];
+  const make = (sets) => {
+    const g = new THREE.Group();
+    sets.forEach((list, k) => { if (list.length) g.add(new THREE.Mesh(mergeGeometries(list), mats[k])); });
+    return g;
+  };
+  return { top: make(tops), low: make(lows), mats };
+}
+
 // Returns { mesh, bones: {name: Bone}, attach(boneName, obj, worldPos), restWorld(name) }
 export function createHuman(skin) {
   const { info, attrs } = DATA;
@@ -220,7 +297,7 @@ export function createHuman(skin) {
   const eyeY = meta.eyes.L.c[1], eyeZ = meta.eyes.L.c[2];
   const helmet = buildHelmet(skin); owned.push(helmet.userData.disposeMat);
   attach('head', helmet, new THREE.Vector3(0, eyeY + 0.03, eyeZ + 0.105));
-  const iris = IRIS[(skin.number || 0) % IRIS.length];
+  const iris = skin.eyes || IRIS[(skin.number || 0) % IRIS.length];
   for (const s of ['L', 'R']) attach('head', buildEye(meta.eyes[s].r * 0.95, iris), new THREE.Vector3(...meta.eyes[s].c));
   const padMat = new THREE.MeshStandardMaterial({ color: skin.jersey, roughness: 0.68, side: THREE.DoubleSide }); owned.push(padMat);
   const jersey = new THREE.SkinnedMesh(JERSEY_GEO, padMat);
@@ -261,11 +338,43 @@ export function createHuman(skin) {
     plate.rotation.y = ry;
     attach('spine02', plate, new THREE.Vector3(0, CHEST.y, z));
   }
+  // hair and smile
+  const hair = buildHair(skin);
+  owned.push(...hair.mats);
+  attach('head', hair.top, new THREE.Vector3());
+  attach('head', hair.low, new THREE.Vector3());
+  if (skin.smile !== false) {
+    const smile = new THREE.Group();
+    const teeth = new THREE.Mesh(new THREE.TorusGeometry(0.019, 0.0065, 6, 16, Math.PI * 0.8), smat('#f7f4ee', 0.3));
+    teeth.rotation.z = Math.PI + Math.PI * 0.1; teeth.scale.set(1.15, 0.75, 0.6);
+    smile.add(teeth);
+    for (const sx of [-1, 1]) { // smile lines at the mouth corners
+      const dim = new THREE.Mesh(new THREE.SphereGeometry(0.004, 6, 4), smat(new THREE.Color(skin.tone || '#c98e62').multiplyScalar(0.7).getStyle(), 0.6));
+      dim.position.set(sx * 0.024, 0.003, 0.002); smile.add(dim);
+    }
+    attach('head', smile, new THREE.Vector3(MOUTH.x, MOUTH.y + 0.004, MOUTH.z - 0.002));
+  }
+  // eyebrows (shaped, in a darker shade of the hair color)
+  {
+    const browMat = smat(new THREE.Color(skin.hair || '#8a6239').multiplyScalar(0.55).getStyle(), 0.9);
+    for (const s of ['L', 'R']) {
+      const e = meta.eyes[s].c, sx = Math.sign(e[0]);
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(e[0] - sx * 0.016, e[1] + 0.019, e[2] - 0.019),
+        new THREE.Vector3(e[0] + sx * 0.002, e[1] + 0.025, e[2] - 0.018),
+        new THREE.Vector3(e[0] + sx * 0.02, e[1] + 0.021, e[2] - 0.011),
+      ]);
+      const brow = new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.0032, 5), browMat);
+      attach('head', brow, new THREE.Vector3());
+    }
+  }
+  const setHelmet = (on) => { helmet.visible = on; hair.top.visible = !on; };
+  setHelmet(skin.helmetOn !== false);
   // weapon hand point
   const hand = new THREE.Group();
   attach('wrist.R', hand, restWorld('wrist.R').add(new THREE.Vector3(0, -0.07, -0.01)));
   hand.quaternion.identity();
-  return { mesh, bones: byName, hand, owned };
+  return { mesh, bones: byName, hand, owned, setHelmet };
 }
 
 function numberTexture(num, accent) {

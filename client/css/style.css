@@ -134,9 +134,10 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .bucks { background: rgba(0,0,0,.35); border: 2px solid #ffcc33; border-radius: 20px; padding: 6px 12px; font-weight: 800; white-space: nowrap; }
 .bucks b { color: #ffcc33; }
 #open-shop { flex: 1; background: linear-gradient(90deg, #8a4b16, #c97a2b); color: #fff; box-shadow: 0 4px 0 #4d2a0c; }
-#tones { display: inline-flex; gap: 6px; vertical-align: middle; }
-#tones button { width: 26px; height: 26px; border-radius: 50%; padding: 0; box-shadow: none; border: 2px solid rgba(255,255,255,.3); }
-#tones button.sel { border: 3px solid #fff; }
+.swatches { display: inline-flex; gap: 6px; vertical-align: middle; }
+.swatches button { width: 26px; height: 26px; border-radius: 50%; padding: 0; box-shadow: none; border: 2px solid rgba(255,255,255,.3); }
+.swatches button.sel { border: 3px solid #fff; }
+#hair-style { padding: 4px 6px; font-size: 13px; }
 #shop { background: radial-gradient(ellipse at 50% 0%, #7a3d12 0%, #2a1408 60%, #120904 100%); z-index: 30; align-items: flex-start; overflow: auto; padding: 20px; }
 .shop-panel { width: min(1100px, 100%); display: flex; flex-direction: column; gap: 16px; }
 .shop-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }

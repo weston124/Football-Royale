@@ -1,6 +1,9 @@
 // Skins, emotes and the Longhorn Item Shop. All designs are original to Football Royale.
 
 export const SKIN_TONES = ['#f6d3b3', '#e8b48a', '#c98e62', '#a8693f', '#7a4a2a', '#4f2f1c'];
+export const HAIR_COLORS = ['#b8894f', '#8a6239', '#5a3d24', '#2e1f14', '#121010', '#e0c27a', '#a8452a'];
+export const HAIR_STYLES = ['wavy', 'flow', 'short', 'buzz'];
+export const EYE_COLORS = ['#3d78b8', '#5f8f6a', '#5a3a22', '#2a1a10', '#7a8a96'];
 
 // unlock: earned by playing. price: bought in the Longhorn Item Shop with Ball Bucks.
 export const SKIN_PRESETS = [
@@ -66,6 +69,11 @@ export function sanitizeSkin(s, profile) {
   const out = { preset: p.id };
   for (const k of ['jersey', 'accent', 'helmet', 'stripe', 'mask', 'pants']) out[k] = HEX.test(s[k]) ? s[k] : p[k];
   out.tone = SKIN_TONES.includes(s.tone) ? s.tone : SKIN_TONES[2];
+  out.hair = HAIR_COLORS.includes(s.hair) ? s.hair : HAIR_COLORS[1];
+  out.hairStyle = HAIR_STYLES.includes(s.hairStyle) ? s.hairStyle : 'wavy';
+  out.eyes = EYE_COLORS.includes(s.eyes) ? s.eyes : EYE_COLORS[2];
+  out.smile = s.smile !== false;
+  out.helmetOn = s.helmetOn !== false; // players choose helmet on or off
   out.horns = p.horns || null;
   const n = parseInt(s.number, 10);
   out.number = Number.isFinite(n) ? Math.max(0, Math.min(99, n)) : 12;

@@ -1,7 +1,7 @@
 // Locker Room (menu), squads, news, broadcasts, party pop-ups and starting matches.
 import * as THREE from 'three';
 import { generateMap } from '/shared/map.js';
-import { SKIN_PRESETS, SKIN_TONES, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
+import { SKIN_PRESETS, SKIN_TONES, HAIR_COLORS, EYE_COLORS, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
 import { RARITIES } from '/shared/weapons.js';
 import { createPlayer, animatePlayer, disposePlayer, setupEnvironment, loadHuman } from './models.js';
 
@@ -108,7 +108,8 @@ function refreshPreview() {
   $('skin-team').textContent = preset ? preset.team : '';
   $('c-jersey').value = profile.skin.jersey; $('c-accent').value = profile.skin.accent;
   $('c-helmet').value = profile.skin.helmet; $('c-number').value = profile.skin.number;
-  [...$('tones').children].forEach((b) => b.classList.toggle('sel', b.dataset.t === profile.skin.tone));
+  for (const [id, key] of [['tones', 'tone'], ['hairs', 'hair'], ['eyes', 'eyes']]) [...$(id).children].forEach((b) => b.classList.toggle('sel', b.dataset.t === profile.skin[key]));
+  $('hair-style').value = profile.skin.hairStyle; $('smile').checked = profile.skin.smile !== false; $('helmet-on').checked = profile.skin.helmetOn !== false;
 }
 function previewLoop(ts) {
   if (!previewRunning) return;
@@ -135,18 +136,27 @@ $('skins').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   const p = SKIN_PRESETS.find((x) => x.id === b.dataset.id);
   if (!unlocked(p)) { if (p.price) return openShop(); $('menu-error').textContent = `🔒 ${p.team} unlocks with ${p.unlock.wins ? p.unlock.wins + ' win(s)' : p.unlock.kills + ' eliminations'}!`; return; }
-  profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone });
+  profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn });
   saveProfile(); renderSkins(); refreshPreview();
 };
 for (const k of ['jersey', 'accent', 'helmet']) {
   $(`c-${k}`).oninput = (e) => { profile.skin[k] = e.target.value; if (k === 'helmet') profile.skin.stripe = profile.skin.accent; refreshPreview(); };
   $(`c-${k}`).onchange = saveProfile;
 }
-$('tones').innerHTML = SKIN_TONES.map((t) => `<button data-t="${t}" style="background:${t}"></button>`).join('');
-$('tones').onclick = (e) => {
-  const b = e.target.closest('button'); if (!b) return;
-  profile.skin.tone = b.dataset.t; saveProfile(); refreshPreview();
+// character creator: skin tone, hair, eyes, smile
+const swatchRow = (id, list, key) => {
+  $(id).innerHTML = list.map((t) => `<button data-t="${t}" style="background:${t}"></button>`).join('');
+  $(id).onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    profile.skin[key] = b.dataset.t; saveProfile(); refreshPreview();
+  };
 };
+swatchRow('tones', SKIN_TONES, 'tone');
+swatchRow('hairs', HAIR_COLORS, 'hair');
+swatchRow('eyes', EYE_COLORS, 'eyes');
+$('hair-style').onchange = () => { profile.skin.hairStyle = $('hair-style').value; saveProfile(); refreshPreview(); };
+$('smile').onchange = () => { profile.skin.smile = $('smile').checked; saveProfile(); refreshPreview(); };
+$('helmet-on').onchange = () => { profile.skin.helmetOn = $('helmet-on').checked; saveProfile(); refreshPreview(); };
 $('c-number').onchange = (e) => { profile.skin = sanitizeSkin({ ...profile.skin, number: e.target.value }); saveProfile(); refreshPreview(); };
 
 function renderStats() {
@@ -395,7 +405,7 @@ net.on('bought', (m) => {
   $('shop-msg').textContent = '';
   if (item && item.kind === 'skin') {
     const p = SKIN_PRESETS.find((x) => x.id === item.id);
-    profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone });
+    profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn });
     saveProfile(); refreshPreview();
   }
 });
@@ -443,7 +453,7 @@ $('shop-items').onclick = (e) => {
   const b = e.target.closest('button[data-buy]'); if (!b) return;
   const item = SHOP.find((i) => i.id === b.dataset.buy);
   if (account.owned.includes(item.id)) {
-    if (item.kind === 'skin') { $('close-shop').click(); const p = SKIN_PRESETS.find((x) => x.id === item.id); profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone }); saveProfile(); refreshPreview(); renderSkins(); }
+    if (item.kind === 'skin') { $('close-shop').click(); const p = SKIN_PRESETS.find((x) => x.id === item.id); profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn }); saveProfile(); refreshPreview(); renderSkins(); }
     return;
   }
   if (account.bucks < item.price) { $('shop-msg').textContent = `You need ${(item.price - account.bucks).toLocaleString()} more Ball Bucks. Keep playing to earn more!`; return; }

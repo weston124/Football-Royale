@@ -196,7 +196,7 @@ function createRealPlayer(skin) {
       B['lowerarm01.' + s].rotation.set(P['elbow' + l].rotation.x, 0, 0);
     }
   };
-  root.userData = { parts: P, walk: 0, held: null, heldCode: -1, rig, human: h };
+  root.userData = { parts: P, walk: 0, held: null, heldCode: -1, rig, human: h, setHelmet: h.setHelmet };
   rig();
   return root;
 }
