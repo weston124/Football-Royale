@@ -491,7 +491,7 @@ export class Game {
         this.spectateId = e[2] || 0;
         const killer = this.roster.get(e[2]);
         document.exitPointerLock();
-        this.hud.lowHealth(0); this.hud.clearTips();
+        this.hud.lowHealth(0); this.hud.clearTips(true);
         this.result.place = e[1];
         sfx.lose();
         this.addShake(0.6);
@@ -509,7 +509,8 @@ export class Game {
     document.exitPointerLock();
     $('result').classList.add('hidden');
     this.result.win = true; this.result.place = 1;
-    this.hud.lowHealth(0); this.hud.clearTips(); this.hud.clearCallouts();
+    this.ended = true; $('pause').classList.add('hidden');
+    this.hud.lowHealth(0); this.hud.clearTips(true); this.hud.clearCallouts();
     this.hud.prompt(''); this.hud.centerMsg('');
     // slow-motion victory cam: orbit around me while I celebrate
     const t = nowS();
@@ -528,6 +529,7 @@ export class Game {
   showResult(win, sub) {
     const r = this.result;
     $('result').className = win ? 'win' : 'out';
+    $('pause').classList.add('hidden');
     if (win) $('res-kicker').textContent = 'FOOTBALL ROYALE CHAMPION';
     else if (!this.ended) $('res-kicker').textContent = `${this.alive} player${this.alive === 1 ? '' : 's'} still in the match`;
     $('res-head').textContent = win ? '#1 VICTORY!' : r.place && r.place <= 10 ? `TOP ${r.place <= 5 ? 5 : 10}! NICE RUN!` : 'FUMBLED!';

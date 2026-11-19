@@ -201,7 +201,7 @@ function makePoster(result) {
   // render the player big and sharp (pose them like the menu preview)
   const keep = { pr: pr.getPixelRatio(), aspect: pCam.aspect, pos: pCam.position.clone() };
   pr.setPixelRatio(1); pr.setSize(W, H, false);
-  pCam.aspect = W / H; pCam.position.set(0, 1.05, result ? 3.7 : 3.35); pCam.lookAt(0, result ? 0.9 : 0.98, 0); pCam.updateProjectionMatrix();
+  pCam.aspect = W / H; pCam.position.set(0, 1.05, result ? 5.2 : 3.35); pCam.lookAt(0, result ? 1.05 : 0.98, 0); pCam.updateProjectionMatrix();
   if (pModel) { pModel.rotation.y = Math.PI + 0.3; pModel.userData.ball.visible = false; animatePlayer(pModel, { speed: 0, phase: 0, hero: true, emote: 0, emoteT: 0, t: 1 }, 1 / 60); }
   pr.render(pScene, pCam);
   g.drawImage(pr.domElement, 0, 0, W, H);

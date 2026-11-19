@@ -150,7 +150,7 @@ export class Hud {
   tip(id, html, ms = 7000) {
     let seen = {};
     try { seen = JSON.parse(localStorage.getItem('fr_tips') || '{}'); } catch { /* blocked */ }
-    if (seen[id]) return false;
+    if (seen[id] || this.tipsMuted) return false;
     seen[id] = 1;
     try { localStorage.setItem('fr_tips', JSON.stringify(seen)); } catch { /* blocked */ }
     this.tips = this.tips || [];
@@ -168,7 +168,7 @@ export class Hud {
     clearTimeout(this.tipTimer);
     this.tipTimer = setTimeout(() => { el.classList.add('out'); this.tipTimer = setTimeout(() => this.nextTip(), 350); }, t.ms);
   }
-  clearTips() { this.tips = []; this.tipping = false; clearTimeout(this.tipTimer); $('tip').classList.add('hidden'); }
+  clearTips(mute = false) { this.tipsMuted = mute; this.tips = []; this.tipping = false; clearTimeout(this.tipTimer); $('tip').classList.add('hidden'); }
   fps(text) { const el = $('fps'); el.classList.toggle('hidden', text == null); if (text != null) el.textContent = text; }
   hurtFrom(angle) {
     const h = $('hurtdir');
