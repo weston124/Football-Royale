@@ -7,7 +7,7 @@ import { EMOTES } from '/shared/skins.js';
 import { buildWorld } from './world.js';
 import {
   createPlayer, animatePlayer, setHeld, disposePlayer, createWeaponModel, createConsumable, createLootModel,
-  createChest, createBlimp, createFootball, turfMaterial, mat, WCODES,
+  createChest, createBlimp, createFootball, turfMaterial, mat, WCODES, createHand,
 } from './models.js';
 import { sfx } from './audio.js';
 
@@ -71,15 +71,17 @@ export class Game {
     this.vmCam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 10);
     this.vm = new THREE.Group(); this.vmScene.add(this.vm);
     this.vmHeld = null; this.vmCode = '';
-    const skinMat = mat(this.mySkin.tone || '#c98e62'), glove = mat(this.mySkin.accent), tape = mat('#ffffff');
-    const arm = (x) => {
+    const skinMat = new THREE.MeshStandardMaterial({ color: this.mySkin.tone || '#c98e62', roughness: 0.62 });
+    const tape = new THREE.MeshStandardMaterial({ color: '#f5f5f5', roughness: 0.8 });
+    const arm = (x, side) => {
       const g = new THREE.Group();
-      const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.42, 4, 10), skinMat); fore.rotation.x = Math.PI / 2; fore.position.z = 0.16; g.add(fore);
-      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.056, 0.06, 10), tape); t.rotation.x = Math.PI / 2; t.position.z = -0.06; g.add(t);
-      const h = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 10), glove); h.scale.set(0.9, 0.85, 1.15); h.position.z = -0.13; g.add(h);
+      const fore = new THREE.Mesh(new THREE.LatheGeometry([[0.034, -0.25], [0.04, -0.2], [0.05, -0.1], [0.052, 0.05], [0.055, 0.25]].map(([r, y]) => new THREE.Vector2(r, y)), 12), skinMat);
+      fore.rotation.x = -Math.PI / 2; fore.position.z = 0.12; g.add(fore);
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.039, 0.038, 0.05, 12), tape); t.rotation.x = Math.PI / 2; t.position.z = -0.115; g.add(t);
+      const h = createHand(this.mySkin.accent, side); h.rotation.x = -Math.PI / 2; h.rotation.y = side * 0.3; h.position.z = -0.135; g.add(h);
       g.position.set(x, -0.05, 0); return g;
     };
-    this.vmArmR = arm(0.06); this.vmArmL = arm(-0.16); this.vmArmL.rotation.y = -0.5;
+    this.vmArmR = arm(0.06, 1); this.vmArmL = arm(-0.16, -1); this.vmArmL.rotation.y = -0.5;
     this.vm.add(this.vmArmR, this.vmArmL);
   }
   updateViewmodelItem() {

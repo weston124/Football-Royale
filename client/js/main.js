@@ -79,7 +79,7 @@ const pScene = new THREE.Scene();
 pScene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.4));
 const pl = new THREE.DirectionalLight(0xffffff, 1.5); pl.position.set(2, 3, 3); pScene.add(pl);
 const pCam = new THREE.PerspectiveCamera(35, 360 / 380, 0.1, 50);
-pCam.position.set(0, 1.25, 4.6); pCam.lookAt(0, 1.0, 0);
+pCam.position.set(0, 1.25, 3.7); pCam.lookAt(0, 1.05, 0);
 let pModel = null, previewRunning = true, previewEmote = 0, previewEmoteStart = 0;
 function refreshPreview() {
   if (pModel) { pScene.remove(pModel); disposePlayer(pModel); }

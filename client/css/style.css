@@ -26,7 +26,7 @@ input, select { background: #fff; color: #111; border: 0; border-radius: 8px; pa
 .stats { background: rgba(0,0,0,.25); padding: 8px 12px; border-radius: 10px; font-size: 14px; }
 .controls { background: rgba(0,0,0,.25); padding: 8px 12px; border-radius: 10px; font-size: 13px; }
 .controls td:first-child { font-weight: 800; color: #ffcc33; padding-right: 12px; white-space: nowrap; }
-#preview { background: radial-gradient(circle at 50% 70%, rgba(255,255,255,.18), transparent 65%); border-radius: 20px; }
+#preview { width: 360px; height: 380px; background: radial-gradient(circle at 50% 70%, rgba(255,255,255,.18), transparent 65%); border-radius: 20px; }
 .skin-team { font-size: 22px; font-weight: 800; }
 .skins { display: grid; grid-template-columns: repeat(5, 64px); gap: 8px; }
 .skins button { width: 64px; height: 64px; padding: 0; border-radius: 12px; position: relative; box-shadow: 0 3px 0 rgba(0,0,0,.4); font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; }
