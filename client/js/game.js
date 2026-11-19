@@ -19,13 +19,14 @@ const dirFrom = (yaw, pitch) => { const c = Math.cos(pitch); return [-Math.sin(y
 const nowS = () => performance.now() / 1000;
 
 export class Game {
-  constructor({ renderer, map, hud, net, myId, mode, kind, mySkin, settings, onLeave, emotes }) {
+  constructor({ renderer, map, hud, net, myId, mode, kind, mySkin, settings, onLeave, emotes, onPlayAgain, onShare, confetti }) {
+    this.onPlayAgain = onPlayAgain; this.onShare = onShare; this.confetti = confetti || (() => {});
     this.myEmotes = emotes || EMOTES.filter((e) => !e.price);
     this.renderer = renderer; this.map = map; this.hud = hud; this.net = net;
     this.myId = myId; this.mode = mode; this.kind = kind; this.mySkin = mySkin;
     this.settings = settings; this.onLeave = onLeave;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.08, 2000);
+    this.camera = new THREE.PerspectiveCamera(this.baseFov(), innerWidth / innerHeight, 0.08, 2000);
     this.world = new World();
     for (const b of map.boxes) this.world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
     const w = buildWorld(this.scene, map);
@@ -42,6 +43,11 @@ export class Game {
     this.emote = null; this.dead = false; this.spectateId = 0; this.ended = false; this.emoteMenu = false; this.bigMap = false;
     this.lastSend = 0; this.frame = 0; this.useTotal = 1;
     this.ads = 0;
+    // game feel & end-of-match bookkeeping
+    this.result = { dmg: 0, bucks: 0, place: 0, win: false, elims: 0 };
+    this.shake = 0; this.timeScale = 1; this.slowMoUntil = 0; this.victoryCam = null;
+    this.myKillTimes = []; this.lastAlive = null; this.zoneSeen = null; this.stormWarned = '';
+    this.nextHeart = 0; this.pendingDmg = 0; this.fpsAcc = { n: 0, t: 0 }; this.stepPhase = {};
     this.blimpMesh = createBlimp(); this.blimpMesh.visible = false; this.scene.add(this.blimpMesh);
     this.myModel = createPlayer(mySkin); this.myModel.visible = false; this.scene.add(this.myModel);
     // chests
@@ -59,6 +65,8 @@ export class Game {
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
     this.hud.show(true);
+    this.hud.clearCallouts(); this.hud.clearTips(); this.hud.lowHealth(0);
+    this.hud.fps(this.settings.showFps ? '-- FPS' : null);
     $('mats').classList.toggle('hidden', mode !== 'build');
     this.onResize = () => { this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); this.vmCam.aspect = innerWidth / innerHeight; this.vmCam.updateProjectionMatrix(); };
     addEventListener('resize', this.onResize);
@@ -119,11 +127,11 @@ export class Game {
         if (document.pointerLockElement !== c) return;
         const s = 0.0022 * this.settings.sens * (this.ads > 0.5 ? this.zoomFactor() : 1);
         this.yaw -= e.movementX * s;
-        this.pitch = clamp(this.pitch - e.movementY * s, -1.5, 1.5);
+        this.pitch = clamp(this.pitch - e.movementY * s * (this.settings.invertY ? -1 : 1), -1.5, 1.5);
       },
       mousedown: (e) => {
-        if (e.target && e.target.closest && e.target.closest('#admin-menu, #party-pop, #shop')) return;
-        if (document.pointerLockElement !== c) { if (!this.dead && !this.emoteMenu) c.requestPointerLock(); return; }
+        if (e.target && e.target.closest && e.target.closest('#admin-menu, #party-pop, #shop, #settings, #pause-settings, #result')) return;
+        if (document.pointerLockElement !== c) { if (!this.dead && !this.emoteMenu && !this.ended) c.requestPointerLock(); return; }
         if (e.button === 0) { this.mouse.left = true; this.mouse.leftEdge = true; if (this.dead) this.cycleSpectate(); }
         if (e.button === 2) this.mouse.right = true;
       },
@@ -136,7 +144,7 @@ export class Game {
       contextmenu: (e) => e.preventDefault(),
       lockchange: () => {
         const locked = document.pointerLockElement === c;
-        $('pause').classList.toggle('hidden', locked || this.dead || this.ended || this.emoteMenu);
+        $('pause').classList.toggle('hidden', locked || this.dead || this.ended || this.emoteMenu || !$('result').classList.contains('hidden'));
         if (!locked) { this.keys.clear(); this.mouse.left = this.mouse.right = false; }
       },
     };
@@ -147,9 +155,10 @@ export class Game {
     document.addEventListener('pointerlockchange', this.h.lockchange);
     $('resume').onclick = () => c.requestPointerLock();
     $('quit').onclick = () => this.leave();
-    $('spectate').onclick = () => { $('dead').classList.add('hidden'); this.cycleSpectate(); };
-    $('dead-leave').onclick = () => this.leave();
-    $('victory-leave').onclick = () => this.leave();
+    $('res-spectate').onclick = () => { $('result').classList.add('hidden'); this.cycleSpectate(); };
+    $('res-leave').onclick = () => this.leave();
+    $('res-again').onclick = () => { this.leave(); if (this.onPlayAgain) this.onPlayAgain(); };
+    $('res-share').onclick = () => this.onShare && this.onShare(this.shareInfo());
     // emote buttons
     $('emotes').innerHTML = this.myEmotes.map((e, i) => `<button data-e="${e.id}"><b>${i + 1}</b><br>${e.name}${e.price ? ' 🐂' : ''}</button>`).join('');
     $('emotes').onclick = (ev) => { const b = ev.target.closest('button'); if (b) this.startEmote(+b.dataset.e); };
@@ -164,12 +173,16 @@ export class Game {
     }
     if (code === 'KeyM') { this.bigMap = !this.bigMap; $('bigmap').classList.toggle('hidden', !this.bigMap); }
     if (code === 'Tab') this.showScoreboard();
-    if (this.dead) { if (code === 'Space') this.cycleSpectate(); return; }
+    if (this.dead) {
+      if (code === 'Space') this.cycleSpectate();
+      if ((code === 'Enter' || code === 'Escape') && $('result').classList.contains('hidden')) $('result').classList.remove('hidden');
+      return;
+    }
     if (code.startsWith('Digit')) { const n = +code.slice(5); if (n >= 1 && n <= 6) this.selectSlot(n - 1); }
     switch (code) {
       case 'Space':
         if (this.local.phase === 'blimp') this.net.send({ t: 'jump' });
-        else if (this.local.phase === 'fall') { this.local.phase = 'glide'; this.net.send({ t: 'deploy' }); }
+        else if (this.local.phase === 'fall') { this.local.phase = 'glide'; this.net.send({ t: 'deploy' }); sfx.chute(); }
         break;
       case 'KeyE': this.interact(); break;
       case 'KeyR': this.reload(); break;
@@ -253,6 +266,7 @@ export class Game {
       const b = this.blimp;
       this.yaw = Math.atan2(-b.dx, -b.dz);
       this.hud.centerMsg('🎈 Press <b>SPACE</b> to jump out of the Team Blimp!');
+      this.hud.tip('blimp', 'The yellow dashed line on your map is the blimp\'s route. Press <kbd>SPACE</kbd> when you\'re over a spot you like to <b>jump out</b>!', 9000);
     } else {
       this.local.phase = 'ground';
       this.hud.centerMsg(this.kind === 'island' ? '🎉 Welcome to <b>PARTY ISLAND</b>! No fighting, just fun. Press <b>G</b> to dance!' : '');
@@ -330,14 +344,23 @@ export class Game {
       this.zone = { cx: z[0], cz: z[1], r: z[2], tx: z[3], tz: z[4], tr: z[5], st: z[6], end: z[7], ph: z[8], t0: z[9] };
       if (!this.zoneDisp) this.zoneDisp = { ...this.zone };
     }
-    if (m.al != null) this.alive = m.al;
+    if (m.al != null) { this.alive = m.al; this.checkAliveCallouts(); }
     if (m.me) this.applyMe(m.me);
     if (m.pe) for (const e of m.pe) this.onPersonal(e);
   }
 
   applyMe(me) {
-    const prevPh = this.me.ph;
+    const prevPh = this.me.ph, prev = this.me;
+    const lost = (prev.hp + prev.pad) - (me.hp + me.pad);
+    if (lost > 0 && prev.ph !== 'blimp') this.pendingDmg += lost;
     this.me = me;
+    // low-health warning
+    this.hud.lowHealth(me.hp > 0 && me.hp <= 30 && me.ph !== 'dead' ? 1 - me.hp / 30 : 0);
+    // coach tips that depend on what I'm carrying
+    if (me.ph === 'ground' && this.frame > 0) {
+      if (me.inv.some((it) => it && it.w)) this.hud.tip('shoot', '<b>Left click</b> to shoot, <b>right click</b> to aim. <kbd>R</kbd> reloads, <kbd>1</kbd>-<kbd>6</kbd> or the mouse wheel switches items.', 8000);
+      if (me.inv.some((it) => it && it.c)) this.hud.tip('heal', 'Pick a healing item and <b>left click</b> to use it. Padding 🛡️ gives you an extra blue shield bar.', 7000);
+    }
     if (me.ph === 'blimp') { this.local.phase = 'blimp'; this.local.x = me.x; this.local.y = me.y; this.local.z = me.z; }
     if (prevPh !== 'ground' && me.ph === 'ground' && this.local.phase !== 'ground') this.local.phase = 'ground';
     if (me.rl && !this.reloadUntil) { this.reloadUntil = nowS() + me.rl; this.reloadTotal = me.rl; }
@@ -363,6 +386,15 @@ export class Game {
         if (id !== this.myId) {
           for (let i = 0; i < ends.length; i += 3) this.tracer(new THREE.Vector3(ox, oy - 0.25, oz), new THREE.Vector3(ends[i], ends[i + 1], ends[i + 2]), wid);
           if (dist < 250) sfx.gun(wid, clamp(1 - dist / 250, 0.05, 1) * 0.8);
+          if (!this.dead && this.local.phase === 'ground' && dist < 120) {
+            // near miss: a bullet zipped right past my head
+            const L = this.local, ey = L.y + PLAYER.eye;
+            for (let i = 0; i < ends.length; i += 3) {
+              const dx = ends[i] - ox, dy = ends[i + 1] - oy, dz = ends[i + 2] - oz, len2 = dx * dx + dy * dy + dz * dz || 1;
+              const k = clamp(((L.x - ox) * dx + (ey - oy) * dy + (L.z - oz) * dz) / len2, 0, 1);
+              if (Math.hypot(ox + dx * k - L.x, oy + dy * k - ey, oz + dz * k - L.z) < 1.6) { this.addShake(0.18); break; }
+            }
+          }
         }
         break;
       }
@@ -381,7 +413,9 @@ export class Game {
         const p = this.projs.get(id);
         if (p) { this.scene.remove(p.mesh); this.projs.delete(id); }
         this.explosion(new THREE.Vector3(x, y, z));
-        sfx.boom(clamp(1 - Math.hypot(x - this.local.x, z - this.local.z) / 200, 0.05, 1));
+        const bd = Math.hypot(x - this.local.x, y - this.local.y, z - this.local.z);
+        sfx.boom(clamp(1 - bd / 200, 0.05, 1));
+        if (bd < 40) this.addShake(clamp(1.1 - bd / 40, 0.15, 1));
         break;
       }
       case 'kf': {
@@ -397,7 +431,7 @@ export class Game {
         else if (wid === 'quit') html = `<b>${esc(victim.name)}</b> left the game`;
         else html = `<b>${esc(killer ? killer.name : '?')}</b> ${head ? '🎯' : '🏈'} <small>${WEAPONS[wid] ? WEAPONS[wid].name : ''}</small> <b>${esc(victim.name)}</b>`;
         this.hud.killfeed(html, mine);
-        if (kid === this.myId && vid !== this.myId) { sfx.elim(); this.hud.toast(`You eliminated ${victim.name}!`); }
+        if (kid === this.myId && vid !== this.myId) this.onMyElim(victim, head);
         if (this.spectateId === vid && this.dead) setTimeout(() => this.cycleSpectate(), 1500);
         break;
       }
@@ -405,7 +439,12 @@ export class Game {
         const [, wid, names, team] = ev;
         this.ended = true;
         if (team === this.myTeam || wid === this.myId) this.victory(names);
-        else this.hud.centerMsg(`🏆 <b>${esc(names)}</b> won the match!`);
+        else {
+          this.hud.centerMsg(`🏆 <b>${esc(names)}</b> won the match!`);
+          $('res-kicker').textContent = `🏆 ${names} won the match`;
+          if (this.dead) setTimeout(() => this.running && $('result').classList.remove('hidden'), 2500);
+          $('res-spectate').classList.add('hidden');
+        }
         break;
       }
     }
@@ -416,12 +455,16 @@ export class Game {
       case 'corr':
         this.local.x = e[1]; this.local.y = e[2]; this.local.z = e[3];
         this.local.vx = this.local.vy = this.local.vz = 0;
-        if (e[4] === 'fall') { this.local.phase = 'fall'; this.hud.centerMsg(''); this.hud.toast('Press SPACE to open your parachute early', 3000); }
+        if (e[4] === 'fall') {
+          this.local.phase = 'fall'; this.hud.centerMsg('');
+          if (!this.hud.tip('chute', 'You\'re skydiving! Steer with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Press <kbd>SPACE</kbd> to <b>open your parachute</b> early (it opens by itself near the ground).', 8000)) this.hud.toast('Press SPACE to open your parachute early', 3000);
+        }
         break;
       case 'hit': {
         const [, dmg, head, x, y, z, kill] = e;
         this.hud.hitmarker(kill, head);
         sfx.hit(head);
+        this.result.dmg += dmg || 0;
         const v = new THREE.Vector3(x, y, z).project(this.camera);
         if (v.z < 1) this.hud.damageNumber((v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight, dmg, head);
         break;
@@ -430,12 +473,15 @@ export class Game {
         const ang = Math.atan2(e[1] - this.local.x, e[2] - this.local.z);
         // angle relative to view (0 = in front)
         this.hud.hurtFrom(-(ang - Math.atan2(-Math.sin(this.yaw), -Math.cos(this.yaw))));
-        this.hud.flash('hurt');
+        const hit = this.pendingDmg || 10;
+        this.hud.flash('hurt', 0.35 + hit / 45);
+        this.addShake(clamp(hit / 60, 0.12, 0.5));
+        this.pendingDmg = 0;
         sfx.hurt();
         this.emote = null;
         break;
       }
-      case 'storm': this.hud.flash('storm'); sfx.storm(); break;
+      case 'storm': this.hud.flash('storm', 0.7); sfx.storm(); this.pendingDmg = 0; break;
       case 'kb': this.local.vx += e[1]; this.local.vy = Math.max(this.local.vy, e[2]); this.local.vz += e[3]; this.local.onGround = false; break;
       case 'msg': this.hud.toast(e[1]); break;
       case 'mats': break;
@@ -445,9 +491,13 @@ export class Game {
         this.spectateId = e[2] || 0;
         const killer = this.roster.get(e[2]);
         document.exitPointerLock();
-        $('dead-title').textContent = 'FUMBLED!';
-        $('dead-info').innerHTML = `${killer ? `Eliminated by <b>${esc(killer.name)}</b>.` : 'You were eliminated.'}<br>You placed <b>#${e[1]}</b> with <b>${this.me.k}</b> eliminations.`;
-        $('dead').classList.remove('hidden');
+        this.hud.lowHealth(0); this.hud.clearTips(true);
+        this.result.place = e[1];
+        sfx.lose();
+        this.addShake(0.6);
+        const sub = killer && e[2] !== this.myId ? `Tackled by <b>${esc(killer.name)}</b>` : 'The storm got you this time';
+        // a short beat to see what happened, then the results
+        setTimeout(() => { if (this.running && !this.result.win) this.showResult(false, sub); }, 1300);
         this.saveStats(false);
         break;
       }
@@ -455,14 +505,94 @@ export class Game {
   }
 
   victory(names) {
-    if (this.dead && !this.savedWin) { /* team won while I was down */ }
+    if (this.result.win) return;
     document.exitPointerLock();
-    $('dead').classList.add('hidden');
-    $('victory-info').innerHTML = `${esc(names)} — ${this.me.k} eliminations. You're the last team standing! 🏈`;
-    $('victory').classList.remove('hidden');
+    $('result').classList.add('hidden');
+    this.result.win = true; this.result.place = 1;
+    this.ended = true; $('pause').classList.add('hidden');
+    this.hud.lowHealth(0); this.hud.clearTips(true); this.hud.clearCallouts();
+    this.hud.prompt(''); this.hud.centerMsg('');
+    // slow-motion victory cam: orbit around me while I celebrate
+    const t = nowS();
+    this.slowMoUntil = t + 2.6;
+    if (!this.dead) { this.victoryCam = { start: t, yaw: this.yaw }; this.emote = { id: 3, start: t }; }
+    this.hud.callout('🏆 VICTORY! 🏆', 'LAST TEAM STANDING', 'win');
     sfx.win();
-    for (let i = 0; i < 6; i++) setTimeout(() => this.burst(this.camera.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 8, 3, (Math.random() - 0.5) * 8)), ['#ff5a2a', '#ffcc33', '#3fa2ff', '#4fd16b', '#ff7bf2'], 60), i * 300);
+    this.confetti(9000);
+    for (let i = 0; i < 8; i++) setTimeout(() => this.running && this.burst(new THREE.Vector3(this.local.x + (Math.random() - 0.5) * 10, this.local.y + 4 + Math.random() * 3, this.local.z + (Math.random() - 0.5) * 10), ['#ff5a2a', '#ffcc33', '#3fa2ff', '#4fd16b', '#ff7bf2'], 60), i * 280);
+    const sub = names.includes('&') ? `${esc(names)}: champions together!` : 'You\'re the last one standing!';
+    setTimeout(() => { if (this.running) this.showResult(true, sub); }, 2600);
     this.saveStats(true);
+  }
+
+  // ---------- end-of-match results ----------
+  showResult(win, sub) {
+    const r = this.result;
+    $('result').className = win ? 'win' : 'out';
+    $('pause').classList.add('hidden');
+    if (win) $('res-kicker').textContent = 'FOOTBALL ROYALE CHAMPION';
+    else if (!this.ended) $('res-kicker').textContent = `${this.alive} player${this.alive === 1 ? '' : 's'} still in the match`;
+    $('res-head').textContent = win ? '#1 VICTORY!' : r.place && r.place <= 10 ? `TOP ${r.place <= 5 ? 5 : 10}! NICE RUN!` : 'FUMBLED!';
+    $('res-sub').innerHTML = sub || '';
+    $('res-spectate').classList.toggle('hidden', win || this.ended);
+    $('res-again-sub').textContent = `straight into ${this.mode === 'build' ? 'Build' : 'No-Build'} Quick Play`;
+    $('res-msg').textContent = '';
+    this.renderResult();
+    if (r.place && r.place <= 10 && !win) this.confetti(1500);
+  }
+  renderResult() {
+    const r = this.result;
+    $('res-place').textContent = r.place ? `#${r.place}` : '#–';
+    $('res-elims').textContent = this.me.k;
+    $('res-dmg').textContent = Math.round(r.dmg).toLocaleString();
+    $('res-bucks').textContent = `+${r.bucks}`;
+  }
+  onReward(m) { this.result.bucks += m.bucks || 0; if (!$('result').classList.contains('hidden')) this.renderResult(); }
+  shareInfo() {
+    const r = this.result;
+    return { place: r.place, win: r.win, elims: this.me.k, dmg: Math.round(r.dmg), mode: this.mode };
+  }
+
+  // ---------- callouts & feel ----------
+  addShake(a) { this.shake = Math.min(1.2, this.shake + a); }
+  onMyElim(victim, head) {
+    sfx.elim();
+    this.hud.toast(`${head ? '🎯 ' : ''}You eliminated ${victim.name}!`);
+    const t = nowS();
+    this.myKillTimes = this.myKillTimes.filter((k) => t - k < 8);
+    this.myKillTimes.push(t);
+    this.myElims = (this.myElims || 0) + 1;
+    const n = this.myKillTimes.length, total = this.myElims;
+    const STREAK = { 2: 'DOUBLE TACKLE!', 3: 'TRIPLE TACKLE!', 4: 'QUAD SQUAD SMASH!' };
+    const TOTAL = { 3: ['ON A HOT STREAK! 🔥', '3 eliminations'], 5: ['UNSTOPPABLE RUNNER!', '5 eliminations'], 10: ['ALL-STAR LEGEND! ⭐', '10 eliminations'], 15: ['HALL OF FAMER! 👑', '15 eliminations'] };
+    if (n >= 2) { this.hud.callout(STREAK[n] || 'TOUCHDOWN FRENZY!', `${n} in a row`, 'streak'); sfx.streak(n); }
+    else if (TOTAL[total]) { this.hud.callout(TOTAL[total][0], TOTAL[total][1], 'streak'); sfx.streak(3); }
+  }
+  checkAliveCallouts() {
+    const prev = this.lastAlive, now = this.alive;
+    this.lastAlive = now;
+    if (prev == null || now >= prev || this.dead || this.ended || this.kind === 'island') return;
+    const M = [[50, '50 PLAYERS LEFT'], [25, '25 PLAYERS LEFT'], [10, 'TOP 10!', 'only 10 players left'], [5, 'FINAL 5!', 'stay sharp'], [2, 'LAST TWO STANDING!', 'win this and it\'s yours']];
+    for (const [m, text, sub] of M) if (prev > m && now <= m) { this.hud.callout(text, sub || '', m <= 5 ? 'hot' : ''); sfx.callout(); break; }
+  }
+  checkStorm(st) {
+    const z = this.zone;
+    if (!z || z.r >= 3000 || this.kind === 'island') return;
+    if (!this.zoneSeen) {
+      this.zoneSeen = true;
+      if (this.local.phase === 'ground') this.hud.tip('storm', '🌀 The <b>Overtime Storm</b> shrinks the field and hurts if you\'re outside it. Stay inside the <b>white circle</b> on your map (<kbd>M</kbd> for the big map).', 9000);
+      else this.zoneSeen = false; // wait until I've landed
+    }
+    const key = `${z.ph}:${z.st}`;
+    const left = z.end - st;
+    if (st >= z.t0 && z.st === 0 && left <= 10 && left > 0 && this.stormWarned !== `${z.ph}:warn`) {
+      this.stormWarned = `${z.ph}:warn`;
+      if (!this.dead) { this.hud.toast('🌀 The storm moves in 10 seconds! Get inside the white circle.', 3500); sfx.beep(); setTimeout(() => this.running && sfx.beep(), 250); }
+    }
+    if (z.st === 1 && this.stormWarned !== key) {
+      this.stormWarned = key;
+      if (!this.dead) { this.hud.callout('⚠️ THE STORM IS CLOSING IN!', 'move to the safe zone', 'storm'); sfx.siren(); }
+    }
   }
 
   saveStats(win) {
@@ -578,6 +708,9 @@ export class Game {
     const dt = Math.min(0.05, t - this.lastFrame);
     this.lastFrame = t;
     this.frame++;
+    // visual delta: slows down during the victory slow-motion moment
+    const vdt = t < this.slowMoUntil ? dt * (0.25 + 0.75 * clamp(1 - (this.slowMoUntil - t) / 2.6, 0, 1) ** 2) : dt;
+    this.feelTick(t, dt);
     const st = this.serverNow();
     const renderT = st - 0.1;
     const L = this.local;
@@ -597,7 +730,9 @@ export class Game {
         let left = dt;
         while (left > 0) { const h = Math.min(left, 1 / 60); stepPlayer(this.world, L, input, h); left -= h; }
       } else if (L.phase === 'fall' || L.phase === 'glide') {
-        if (stepFalling(this.world, L, input, dt)) { this.hud.centerMsg(''); }
+        const wasGlide = L.phase === 'glide';
+        if (stepFalling(this.world, L, input, dt)) { this.hud.centerMsg(''); this.onLanded(); }
+        else if (!wasGlide && L.phase === 'glide') sfx.chute();
       } else if (L.phase === 'blimp' && this.blimp) {
         const b = this.blimp, d = Math.min(b.len, (st - b.t0) * DROP.speed);
         L.x = b.x0 + b.dx * d; L.y = DROP.height; L.z = b.z0 + b.dz * d;
@@ -638,6 +773,7 @@ export class Game {
       const prev = e.last || s;
       const spd = Math.hypot(s.x - prev.x, s.z - prev.z) / Math.max(dt, 0.001);
       e.last = { x: s.x, z: s.z };
+      if (s.ph === 0 && dist < 38 && spd > 2 && !this.dead) this.footstep(e, s, dist, spd, dt);
       obj.position.set(s.x, s.y, s.z);
       obj.rotation.y = s.yaw;
       if (e.tag) { e.tag.position.set(s.x, s.y + 2.5, s.z); e.tag.visible = dist < 200; }
@@ -646,14 +782,14 @@ export class Game {
         e.em = s.em;
         e.swing = Math.max(0, e.swing - dt * 4);
         setHeld(e.model, s.ph === 0 && !s.em ? s.w : 0);
-        animatePlayer(e.model, { speed: Math.min(spd, 12), phase: s.ph, emote: s.em, emoteT: t - e.emStart, pitch: s.pitch, swing: e.swing, t }, dt);
+        animatePlayer(e.model, { speed: Math.min(spd, 12), phase: s.ph, emote: s.em, emoteT: t - e.emStart, pitch: s.pitch, swing: e.swing, t }, vdt);
       }
     }
 
     // --- projectiles ---
     for (const p of this.projs.values()) {
-      p.vy -= p.grav * dt;
-      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+      p.vy -= p.grav * vdt;
+      p.x += p.vx * vdt; p.y += p.vy * vdt; p.z += p.vz * vdt;
       if (p.y < 0.1) { p.y = 0.1; p.vy = Math.abs(p.vy) * 0.4; p.vx *= 0.6; p.vz *= 0.6; }
       p.mesh.position.set(p.x, p.y, p.z);
       if (p.kind === 'pigskin') { p.mesh.lookAt(p.x + p.vx, p.y + p.vy, p.z + p.vz); p.mesh.rotateZ(t * 20); }
@@ -661,9 +797,9 @@ export class Game {
 
     // --- effects ---
     this.fx = this.fx.filter((f) => {
-      f.life -= dt;
+      f.life -= vdt;
       if (f.life <= 0) { this.scene.remove(f.obj); f.obj.geometry?.dispose(); f.obj.material?.dispose(); return false; }
-      f.update(f.life / f.max, dt);
+      f.update(f.life / f.max, vdt);
       return true;
     });
 
@@ -687,7 +823,7 @@ export class Game {
     }
 
     // --- camera ---
-    this.updateCamera(t, dt, renderT);
+    this.updateCamera(t, vdt, renderT);
 
     // --- HUD ---
     if (this.frame % 4 === 0) this.updateHud(st, t);
@@ -712,7 +848,8 @@ export class Game {
   updateCamera(t, dt, renderT) {
     const L = this.local, cam = this.camera;
     const it = this.currentItem();
-    const fov = 75 - this.ads * (75 - 75 * (it && it.w === 'sniper' ? 0.25 : 0.72));
+    const base = this.baseFov();
+    const fov = base - this.ads * (base - base * (it && it.w === 'sniper' ? 0.25 : 0.72));
     if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
     $('scope').classList.toggle('hidden', !(this.ads > 0.6 && it && it.w === 'sniper'));
     $('crosshair').style.setProperty('--g', `${4 + this.spreadNow() * 260}px`);
@@ -728,6 +865,11 @@ export class Game {
       const s = e && this.sample(e, renderT);
       if (s) thirdTarget = new THREE.Vector3(s.x, s.y + 1.6, s.z);
       else if (this.frame % 60 === 0) this.cycleSpectate();
+    } else if (this.victoryCam) {
+      // slow orbit around the champion
+      thirdTarget = new THREE.Vector3(L.x, L.y + 1.2, L.z); dist = 4.2;
+      this.yaw = this.victoryCam.yaw + Math.PI + (t - this.victoryCam.start) * 0.35; this.pitch = -0.12;
+      if (!this.emote) this.emote = { id: 3, start: t };
     } else if (L.phase === 'blimp') {
       thirdTarget = this.blimpMesh.position.clone(); dist = 70;
     } else if (this.emote || L.phase === 'fall' || L.phase === 'glide') {
@@ -738,7 +880,7 @@ export class Game {
     this.myModel.visible = showMe;
     if (showMe) {
       this.myModel.position.set(L.x, L.y, L.z);
-      this.myModel.rotation.y = this.yaw;
+      this.myModel.rotation.y = this.victoryCam ? this.victoryCam.yaw : this.yaw;
       const ph = { ground: 0, fall: 2, glide: 3 }[L.phase] ?? 0;
       animatePlayer(this.myModel, { speed: Math.hypot(L.vx, L.vz), phase: ph, emote: this.emote?.id || 0, emoteT: this.emote ? t - this.emote.start : 0, pitch: 0, t }, dt);
       if (this.emote) {
@@ -759,6 +901,52 @@ export class Game {
       cam.position.set(L.x, L.y + PLAYER.eye, L.z);
       cam.rotation.set(this.pitch + this.recoil * 0.4, this.yaw, 0, 'YXZ');
     }
+    // screen shake (explosions, hits, landing); stays subtle so nobody gets dizzy
+    if (this.shake > 0.01) {
+      const k = this.shake * this.shake, ph = t * 47;
+      cam.rotation.x += (Math.sin(ph) * 0.6 + Math.sin(ph * 2.3) * 0.4) * 0.022 * k;
+      cam.rotation.y += (Math.cos(ph * 1.3) * 0.6 + Math.sin(ph * 3.1) * 0.4) * 0.018 * k;
+      cam.rotation.z += Math.sin(ph * 0.7) * 0.012 * k;
+      this.shake = Math.max(0, this.shake - dt * 2.2);
+    } else this.shake = 0;
+  }
+
+  baseFov() { return clamp(+this.settings.fov || 75, 60, 100); }
+
+  // ---------- small per-frame game-feel things ----------
+  feelTick(t, dt) {
+    // low-health heartbeat
+    const hp = this.me.hp;
+    if (!this.dead && !this.ended && hp > 0 && hp <= 30 && this.me.ph === 'ground' && t > this.nextHeart) {
+      sfx.heartbeat();
+      this.nextHeart = t + 0.6 + (hp / 30) * 0.5;
+    }
+    // my own footsteps (quiet)
+    const L = this.local;
+    if (!this.dead && L.phase === 'ground' && L.onGround && !this.victoryCam) {
+      const sp = Math.hypot(L.vx, L.vz);
+      if (sp > 2) { this.myStep = (this.myStep || 0) + dt * sp / 2.4; if (this.myStep >= 1) { this.myStep -= 1; sfx.step(0.22, 0); } }
+    }
+    // FPS counter
+    if (this.settings.showFps) {
+      const a = this.fpsAcc; a.n++; a.t = a.t || t;
+      if (t - a.t >= 0.5) { this.hud.fps(`${Math.round(a.n / (t - a.t))} FPS`); a.n = 0; a.t = t; }
+    } else if (!$('fps').classList.contains('hidden')) this.hud.fps(null);
+  }
+  footstep(e, s, dist, spd, dt) {
+    e.step = (e.step || 0) + dt * Math.min(spd, 10) / 2.4;
+    if (e.step < 1) return;
+    e.step -= 1;
+    const L = this.local, dx = (s.x - L.x) / (dist || 1), dz = (s.z - L.z) / (dist || 1);
+    const pan = dx * Math.cos(this.yaw) - dz * Math.sin(this.yaw); // dot with my right vector
+    const v = (1 - dist / 38) ** 2;
+    if (v > 0.02) sfx.step(0.9 * v, pan * 0.8);
+  }
+  onLanded() {
+    sfx.land();
+    this.addShake(0.4);
+    this.hud.tip('loot', 'Gear glows on the ground. Walk up to it and press <kbd>E</kbd> to <b>pick it up</b>. Golden Equipment Bags hold the best stuff!', 8000);
+    if (this.mode === 'build') this.hud.tip('build', 'BUILD MODE: <kbd>Z</kbd> wall · <kbd>X</kbd> floor · <kbd>C</kbd> ramp, then <b>left click</b> to place. Tackle trees, cars and walls (slot <kbd>1</kbd>) to collect Turf 🟩.', 9000);
   }
 
   spreadNow() {
@@ -862,6 +1050,7 @@ export class Game {
     this.hud.counters(this.alive, me.k);
     $('mats').querySelector('span').textContent = me.mats;
     // zone info
+    this.checkStorm(st);
     if (this.zone && this.zone.r < 3000) {
       const z = this.zone;
       const left = Math.max(0, Math.ceil(z.end - st));
@@ -871,6 +1060,7 @@ export class Game {
       let txt = pre != null ? `🌀 Storm forms in ${mm(left)}` : z.st === 0 ? `🌀 Storm shrinks in ${mm(left)}` : z.st === 1 ? `🌀 Storm closing! ${mm(left)}` : '🌀 Final circle';
       if (out && !this.dead && L.phase === 'ground') txt = '⚠️ YOU ARE IN THE STORM! ' + txt;
       this.hud.zoneText(txt);
+      $('zoneinfo').classList.toggle('danger', out && !this.dead && L.phase === 'ground');
     } else this.hud.zoneText(this.kind === 'island' ? '🎉 Party Island' : '');
     // interact prompt
     const target = this.nearestInteract();
@@ -890,7 +1080,7 @@ export class Game {
     if (this.bigMap) this.hud.drawMap(true, s);
     if (this.dead && !this.ended) {
       const r = this.roster.get(this.spectateId);
-      this.hud.centerMsg(r ? `<small>Spectating <b>${esc(r.name)}</b> — click or SPACE for next</small>` : '');
+      this.hud.centerMsg(r ? `<small>Spectating <b>${esc(r.name)}</b> — click or SPACE for next · ENTER for results</small>` : '');
     }
   }
 
@@ -909,7 +1099,9 @@ export class Game {
     removeEventListener('contextmenu', this.h.contextmenu); removeEventListener('resize', this.onResize);
     document.removeEventListener('pointerlockchange', this.h.lockchange);
     if (document.pointerLockElement) document.exitPointerLock();
-    for (const id of ['pause', 'dead', 'victory', 'emotes', 'bigmap', 'scoreboard']) $(id).classList.add('hidden');
+    for (const id of ['pause', 'result', 'emotes', 'bigmap', 'scoreboard']) $(id).classList.add('hidden');
+    this.hud.clearCallouts(); this.hud.clearTips(); this.hud.lowHealth(0); this.hud.fps(null);
+    $('zoneinfo').classList.remove('danger');
     this.hud.show(false);
     this.hud.centerMsg(''); this.hud.prompt('');
     this.scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); });

@@ -111,12 +111,65 @@ export class Hud {
     requestAnimationFrame(() => { el.style.transform = 'translateY(-50px)'; el.style.opacity = 0; });
     setTimeout(() => el.remove(), 800);
   }
-  flash(kind) {
+  // damage / storm flash; `amount` 0..1 scales how strong the red edge glow is
+  flash(kind, amount = 1) {
     const v = $('vignette');
     v.className = kind === 'storm' ? 'storm' : '';
-    v.style.transition = 'none'; v.style.opacity = 1;
-    requestAnimationFrame(() => { v.style.transition = 'opacity .6s'; v.style.opacity = 0; });
+    v.style.transition = 'none'; v.style.opacity = Math.max(0.35, Math.min(1, amount));
+    requestAnimationFrame(() => { v.style.transition = 'opacity .7s ease-out'; v.style.opacity = 0; });
   }
+  // persistent pulsing red edges when health is low (0 = off, 1 = nearly out)
+  lowHealth(k) {
+    const el = $('lowhp');
+    const on = k > 0;
+    el.classList.toggle('on', on);
+    el.style.setProperty('--k', on ? (0.35 + k * 0.65).toFixed(2) : '0');
+  }
+
+  // big center-screen callout ("DOUBLE TACKLE!", "10 PLAYERS LEFT"); queued so they never overlap
+  callout(text, sub = '', kind = '') {
+    this.calls = this.calls || [];
+    this.calls.push({ text, sub, kind });
+    if (!this.calling) this.nextCallout();
+  }
+  nextCallout() {
+    const c = this.calls.shift();
+    const el = $('callout');
+    if (!c) { this.calling = false; return; }
+    this.calling = true;
+    el.className = '';
+    el.innerHTML = `<div class="co-main">${c.text}</div>${c.sub ? `<div class="co-sub">${c.sub}</div>` : ''}`;
+    void el.offsetWidth; // restart the animation
+    el.className = `show ${c.kind}`;
+    clearTimeout(this.calloutTimer);
+    this.calloutTimer = setTimeout(() => { el.className = ''; setTimeout(() => this.nextCallout(), 250); }, 1900);
+  }
+  clearCallouts() { this.calls = []; this.calling = false; clearTimeout(this.calloutTimer); $('callout').className = ''; }
+
+  // coach tips for new players; each tip id is shown once ever (remembered in localStorage)
+  tip(id, html, ms = 7000) {
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem('fr_tips') || '{}'); } catch { /* blocked */ }
+    if (seen[id] || this.tipsMuted) return false;
+    seen[id] = 1;
+    try { localStorage.setItem('fr_tips', JSON.stringify(seen)); } catch { /* blocked */ }
+    this.tips = this.tips || [];
+    this.tips.push({ html, ms });
+    if (!this.tipping) this.nextTip();
+    return true;
+  }
+  nextTip() {
+    const t = this.tips.shift();
+    const el = $('tip');
+    if (!t) { this.tipping = false; el.classList.add('hidden'); return; }
+    this.tipping = true;
+    el.innerHTML = `<div class="tip-head">🏈 COACH TIP</div><div>${t.html}</div>`;
+    el.classList.remove('hidden', 'out');
+    clearTimeout(this.tipTimer);
+    this.tipTimer = setTimeout(() => { el.classList.add('out'); this.tipTimer = setTimeout(() => this.nextTip(), 350); }, t.ms);
+  }
+  clearTips(mute = false) { this.tipsMuted = mute; this.tips = []; this.tipping = false; clearTimeout(this.tipTimer); $('tip').classList.add('hidden'); }
+  fps(text) { const el = $('fps'); el.classList.toggle('hidden', text == null); if (text != null) el.textContent = text; }
   hurtFrom(angle) {
     const h = $('hurtdir');
     h.style.transform = `rotate(${angle}rad)`;

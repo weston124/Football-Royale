@@ -45,91 +45,135 @@
     <div class="menu-left">
       <h1 class="logo">FOOTBALL<br><span>ROYALE</span></h1>
       <p class="tag">75 players. One champion. Drop in, gear up, be the last one standing!</p>
-      <div class="bucks-row">
-        <span class="bucks">🏈 <b id="bucks">0</b> Ball Bucks</span>
-        <button id="open-shop">🐂 LONGHORN ITEM SHOP</button>
+
+      <div class="play-card">
+        <div class="toggle mode-toggle" id="mode" role="radiogroup" aria-label="Mode">
+          <button data-v="nobuild" class="on">🏃 No-Build</button>
+          <button data-v="build">🧱 Build</button>
+        </div>
+        <button id="quick" class="big hero-play"><span class="hp-main">QUICK PLAY</span><span class="hp-sub" id="quick-sub">75 players · drop in now</span></button>
+        <div id="menu-error" class="error"></div>
       </div>
 
-      <div class="who">Signed in as <b id="me-name">…</b> <button id="logout" class="small">Sign out</button></div>
-
-      <label class="lbl">Mode</label>
-      <div class="toggle" id="mode">
-        <button data-v="nobuild" class="on">No-Build</button>
-        <button data-v="build">Build</button>
-      </div>
-
-      <button id="quick" class="big">QUICK PLAY</button>
-      <div class="row">
-        <button id="create">Create Private Room</button>
-        <select id="difficulty" title="Bot difficulty">
-          <option value="easy">Bots: Easy</option>
-          <option value="normal" selected>Bots: Normal</option>
-          <option value="hard">Bots: Hard</option>
-        </select>
-      </div>
-      <div class="row">
-        <input id="code" maxlength="4" placeholder="CODE" class="code">
-        <button id="join">Join Friend's Room</button>
-      </div>
-      <div id="menu-error" class="error"></div>
-
-      <div class="stats" id="stats"></div>
-      <details class="controls">
-        <summary>Controls</summary>
-        <table>
-          <tr><td>WASD</td><td>Move</td></tr><tr><td>Shift</td><td>Sprint</td></tr>
-          <tr><td>Space</td><td>Jump / leave blimp / open parachute</td></tr>
-          <tr><td>Mouse</td><td>Aim · Left click fire · Right click zoom</td></tr>
-          <tr><td>1-6 / Wheel</td><td>Change slot (1 = Tackle)</td></tr>
-          <tr><td>E</td><td>Pick up / open Equipment Bag</td></tr>
-          <tr><td>R</td><td>Reload</td></tr><tr><td>Q</td><td>Drop item</td></tr>
-          <tr><td>Z / X / C</td><td>Build wall / floor / ramp (Build mode)</td></tr>
-          <tr><td>G</td><td>Emotes</td></tr><tr><td>M</td><td>Big map</td></tr>
-          <tr><td>Tab</td><td>Scoreboard</td></tr><tr><td>Esc</td><td>Free mouse / settings</td></tr>
-        </table>
-      </details>
-      <label class="lbl">Mouse sensitivity <input type="range" id="sens" min="0.3" max="3" step="0.1" value="1"></label>
-    </div>
-
-    <div class="menu-right">
-      <div class="party-box">
-        <div class="party-head">👥 SQUAD <small>(up to 4 friends, same team)</small></div>
-        <div id="party-none" class="row">
-          <button id="party-create">Make a Squad</button>
-          <input id="party-code" maxlength="4" placeholder="CODE" class="code">
-          <button id="party-join">Join</button>
+      <div class="party-box" id="party-box">
+        <div id="party-none">
+          <button id="party-invite" class="invite-btn">👥 INVITE FRIENDS <small>squads up to 4</small></button>
+          <div class="row join-squad">
+            <input id="party-code" maxlength="4" placeholder="CODE" class="code" aria-label="Squad code">
+            <button id="party-join" class="ghost">Join a friend's squad</button>
+          </div>
         </div>
         <div id="party-on" class="hidden">
-          <div>Squad code: <b id="party-code-show" class="pc"></b> <button id="party-leave" class="small">Leave</button></div>
+          <div class="party-head">👥 SQUAD <b id="party-code-show" class="pc"></b>
+            <button id="party-share" class="small">🔗 Invite</button>
+            <button id="party-leave" class="small ghost">Leave</button></div>
           <ul id="party-members"></ul>
           <div id="party-note"></div>
         </div>
+        <div id="party-msg" class="party-msg"></div>
       </div>
-      <canvas id="preview" width="360" height="380"></canvas>
-      <button id="photo" class="small">📸 Save a photo of my player</button>
-      <div class="skin-team" id="skin-team"></div>
-      <div id="skins" class="skins"></div>
-      <div class="custom">
-        <label>Jersey <input type="color" id="c-jersey"></label>
-        <label>Trim <input type="color" id="c-accent"></label>
-        <label>Helmet <input type="color" id="c-helmet"></label>
-        <label>Pants <input type="color" id="c-pants"></label>
-        <label>Number <input type="number" id="c-number" min="0" max="99" value="12"></label>
-      </div>
-      <div class="custom">Body <span class="toggle" id="body-pick"><button data-v="m">Male</button><button data-v="f">Female</button></span>
-        Skin tone <span id="tones" class="swatches"></span></div>
-      <div class="custom">Hair <span id="hairs" class="swatches"></span>
-        <select id="hair-style"><option value="flow">Flow (sticks out of helmet)</option><option value="wavy">Wavy</option><option value="short">Short</option><option value="buzz">Buzz</option></select></div>
-      <div class="custom">Eyes <span id="eyes" class="swatches"></span>
-        <label><input type="checkbox" id="smile" checked> Big smile 😁</label>
-        <label><input type="checkbox" id="helmet-on" checked> Wear helmet 🏈</label></div>
+
+      <div class="stats" id="stats"></div>
+      <div class="who">Signed in as <b id="me-name">…</b> <button id="logout" class="small ghost">Sign out</button></div>
     </div>
-    <div class="menu-news">
+
+    <div class="menu-center">
+      <canvas id="preview" width="360" height="380"></canvas>
+      <div class="skin-team" id="skin-team"></div>
+      <button id="photo" class="small">📸 Save a photo of my player</button>
+    </div>
+
+    <div class="menu-right">
+      <div class="topbar">
+        <span class="bucks">🏈 <b id="bucks">0</b></span>
+        <button id="open-shop">🐂 ITEM SHOP</button>
+        <button id="music-toggle" class="icon-btn" title="Menu music on/off" aria-label="Menu music on/off">🎵</button>
+        <button id="open-settings" class="icon-btn" title="Settings" aria-label="Settings">⚙️</button>
+      </div>
       <div id="events"></div>
-      <h3>📰 Updates</h3>
-      <div id="news"></div>
+      <div class="tabs" id="menu-tabs" role="tablist">
+        <button data-tab="locker" class="on">🎨 Locker</button>
+        <button data-tab="rooms">🔒 Rooms</button>
+        <button data-tab="controls">🎮 Controls</button>
+        <button data-tab="news">📰 News</button>
+      </div>
+      <div class="tab-body">
+        <section class="tab-pane" data-pane="locker">
+          <div id="skins" class="skins"></div>
+          <div class="custom">
+            <label>Jersey <input type="color" id="c-jersey"></label>
+            <label>Trim <input type="color" id="c-accent"></label>
+            <label>Helmet <input type="color" id="c-helmet"></label>
+            <label>Pants <input type="color" id="c-pants"></label>
+            <label># <input type="number" id="c-number" min="0" max="99" value="12"></label>
+          </div>
+          <div class="custom">Body <span class="toggle" id="body-pick"><button data-v="m">Male</button><button data-v="f">Female</button></span></div>
+          <div class="custom">Skin tone <span id="tones" class="swatches"></span></div>
+          <div class="custom">Hair <span id="hairs" class="swatches"></span>
+            <select id="hair-style"><option value="flow">Flow (sticks out of helmet)</option><option value="wavy">Wavy</option><option value="short">Short</option><option value="buzz">Buzz</option></select></div>
+          <div class="custom">Eyes <span id="eyes" class="swatches"></span></div>
+          <div class="custom">
+            <label><input type="checkbox" id="smile" checked> Big smile 😁</label>
+            <label><input type="checkbox" id="helmet-on" checked> Wear helmet 🏈</label></div>
+        </section>
+        <section class="tab-pane hidden" data-pane="rooms">
+          <h4>Play with friends in your own room</h4>
+          <div class="row">
+            <button id="create">Create Private Room</button>
+            <select id="difficulty" title="Bot difficulty">
+              <option value="easy">Bots: Easy</option>
+              <option value="normal" selected>Bots: Normal</option>
+              <option value="hard">Bots: Hard</option>
+            </select>
+          </div>
+          <h4>Got a room code?</h4>
+          <div class="row">
+            <input id="code" maxlength="4" placeholder="CODE" class="code" aria-label="Room code">
+            <button id="join">Join Friend's Room</button>
+          </div>
+          <p class="hint">Private rooms fill up with bots so there's always a full match.</p>
+        </section>
+        <section class="tab-pane hidden" data-pane="controls">
+          <table class="controls">
+            <tr><td>WASD</td><td>Move</td></tr><tr><td>Shift</td><td>Sprint</td></tr>
+            <tr><td>Space</td><td>Jump / leave blimp / open parachute</td></tr>
+            <tr><td>Mouse</td><td>Aim · Left click fire · Right click zoom</td></tr>
+            <tr><td>1-6 / Wheel</td><td>Change slot (1 = Tackle)</td></tr>
+            <tr><td>E</td><td>Pick up / open Equipment Bag</td></tr>
+            <tr><td>R</td><td>Reload</td></tr><tr><td>Q</td><td>Drop item</td></tr>
+            <tr><td>Z / X / C</td><td>Build wall / floor / ramp (Build mode)</td></tr>
+            <tr><td>G</td><td>Emotes</td></tr><tr><td>M</td><td>Big map</td></tr>
+            <tr><td>Tab</td><td>Scoreboard</td></tr><tr><td>Esc</td><td>Free mouse / settings</td></tr>
+          </table>
+          <button id="reset-tips" class="small ghost">Show the coach tips again</button>
+        </section>
+        <section class="tab-pane hidden" data-pane="news">
+          <div id="news"></div>
+        </section>
+      </div>
     </div>
     <div id="touch-warning" class="error hidden">Football Royale needs a keyboard and mouse (computer or laptop).</div>
+  </div>
+
+  <!-- ===== SETTINGS ===== -->
+  <div id="settings" class="screen hidden">
+    <div class="panel settings-panel" role="dialog" aria-label="Settings">
+      <h2>⚙️ Settings</h2>
+      <div class="set-grid">
+        <label>Master volume <input type="range" id="s-master" min="0" max="1" step="0.05"><output></output></label>
+        <label>Music volume <input type="range" id="s-music" min="0" max="1" step="0.05"><output></output></label>
+        <label>Sound effects <input type="range" id="s-sfx" min="0" max="1" step="0.05"><output></output></label>
+        <label>Mouse sensitivity <input type="range" id="sens" min="0.3" max="3" step="0.1"><output></output></label>
+        <label>Field of view <input type="range" id="s-fov" min="60" max="100" step="1"><output></output></label>
+        <label class="set-check"><input type="checkbox" id="s-invert"> Invert mouse Y (look up/down flipped)</label>
+        <label class="set-check"><input type="checkbox" id="s-fps"> Show FPS counter</label>
+        <label class="set-check"><input type="checkbox" id="s-menu-music"> Menu music</label>
+        <!-- Graphics quality: wired to client/js/quality.js (setQuality/getQuality) when that module exists. -->
+        <div id="s-quality-row" class="hidden">Graphics quality
+          <div class="toggle" id="s-quality"></div></div>
+      </div>
+      <button id="settings-close" class="big">DONE</button>
+    </div>
   </div>
 
   <!-- ===== SIGN IN ===== -->
@@ -151,6 +195,7 @@
         <button type="submit" class="big" id="a-go">LOG IN</button>
       </form>
       <div id="auth-error" class="error"></div>
+      <div id="auth-invite" class="auth-invite hidden"></div>
       <p class="legal-links" style="margin:10px 0 0;font-size:12px;opacity:.75;text-align:center"><a href="/privacy" target="_blank" style="color:inherit">Privacy</a> · <a href="/terms" target="_blank" style="color:inherit">Terms</a> · <a href="/credits" target="_blank" style="color:inherit">Credits</a> · No ads, ever</p>
     </div>
   </div>
@@ -167,7 +212,7 @@
       <div id="lobby-info"></div>
       <ul id="lobby-players"></ul>
       <button id="lobby-start" class="big hidden">START MATCH</button>
-      <button id="lobby-leave">Back to Locker Room</button>
+      <button id="lobby-leave" class="ghost">Back to Locker Room</button>
     </div>
   </div>
 
@@ -199,6 +244,10 @@
     <canvas id="bigmap" class="hidden" width="720" height="720"></canvas>
     <div id="scoreboard" class="hidden"></div>
     <div id="dmgnums"></div>
+    <div id="lowhp"></div>
+    <div id="callout"></div>
+    <div id="tip" class="hidden"></div>
+    <div id="fps" class="hidden"></div>
   </div>
 
   <div id="pause" class="screen hidden">
@@ -206,24 +255,32 @@
       <h2>Paused</h2>
       <p>Click the button to keep playing.</p>
       <button id="resume" class="big">RESUME</button>
-      <button id="quit">Leave match</button>
+      <button id="pause-settings" class="ghost">⚙️ Settings</button>
+      <button id="quit" class="ghost">Leave match</button>
     </div>
   </div>
 
-  <div id="dead" class="screen hidden">
-    <div class="panel">
-      <h2 id="dead-title">FUMBLED!</h2>
-      <p id="dead-info"></p>
-      <button id="spectate" class="big">Spectate</button>
-      <button id="dead-leave">Back to Locker Room</button>
+  <!-- ===== END OF MATCH (eliminated or victory) ===== -->
+  <div id="result" class="hidden">
+    <div class="res-top">
+      <div class="res-kicker" id="res-kicker">MATCH OVER</div>
+      <h1 id="res-head">FUMBLED!</h1>
+      <p id="res-sub"></p>
     </div>
-  </div>
-
-  <div id="victory" class="screen hidden">
-    <div class="panel victory">
-      <h1>🏆 FOOTBALL ROYALE CHAMPION! 🏆</h1>
-      <p id="victory-info"></p>
-      <button id="victory-leave" class="big">Back to Locker Room</button>
+    <div class="res-card">
+      <div class="res-stats">
+        <div class="rs-place"><b id="res-place">#–</b><small>PLACE</small></div>
+        <div><b id="res-elims">0</b><small>ELIMS</small></div>
+        <div><b id="res-dmg">0</b><small>DAMAGE</small></div>
+        <div class="rs-bucks"><b id="res-bucks">+0</b><small>BALL BUCKS</small></div>
+      </div>
+      <button id="res-again" class="big hero-play"><span class="hp-main">PLAY AGAIN</span><span class="hp-sub" id="res-again-sub">straight into Quick Play</span></button>
+      <div class="row">
+        <button id="res-share" class="share-btn">📣 Share my result</button>
+        <button id="res-spectate" class="ghost">👀 Spectate</button>
+      </div>
+      <button id="res-leave" class="ghost">Back to Locker Room</button>
+      <div id="res-msg"></div>
     </div>
   </div>
 
