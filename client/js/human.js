@@ -13,7 +13,8 @@ let FEET = null;
 let WAIST = null;
 let JERSEY_GEO = null;
 let HEAD = null;          // head shape for hair
-let MOUTH = null;         // where the smile goes    // loose jersey shell over the shoulder pads          // foot boxes for the cleats
+let MOUTH = null;         // where the smile goes
+let LEGS = null;          // thigh/knee fronts for pads    // loose jersey shell over the shoulder pads          // foot boxes for the cleats
 
 const SKIN = 0, JERSEY = 1, PANTS = 2, SOCK = 3, SHOE = 4, GLOVE = 5, ACCENT = 6, BROW = 7, LIPS = 8, EYEBLACK = 9, TAPE = 10, LASH = 11, PSTRIPE = 12;
 
@@ -83,6 +84,20 @@ export async function loadHuman(base = '/assets/') {
     }
     HEAD = { c: [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2 + 0.02, (mn[2] + mx[2]) / 2], r: [(mx[0] - mn[0]) / 2, (mx[1] - mn[1]) / 2 - 0.02, (mx[2] - mn[2]) / 2], top: mx[1], eyeY };
     MOUTH = ln ? { x: lx / ln, y: ly / ln, z: lz } : { x: 0, y: eyeY - 0.075, z: info.meta.eyes.L.c[2] - 0.01 };
+  }
+  // thigh and knee fronts (for the pads)
+  LEGS = {};
+  for (const s of ['L', 'R']) {
+    const pick = (y0) => {
+      let best = null;
+      for (let i = 0; i < n; i++) {
+        if ((s === 'L') !== (p[i * 3] < 0) || Math.abs(p[i * 3 + 1] - y0) > 0.012) continue;
+        if (!best || p[i * 3 + 2] < best[2]) best = [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
+      }
+      return best || [0, y0, 0];
+    };
+    const th = pick(0.79), kn = pick(info.meta.kneeY + 0.01);
+    LEGS[s] = { thighX: th[0], thighZ: th[2], kneeX: kn[0], kneeZ: kn[2] };
   }
   // waist ring for the belt
   const wy = info.meta.waistY - 0.015;
@@ -266,7 +281,17 @@ export function createHuman(skin) {
   geo.setIndex(attrs.index);
   const n = info.vertexCount, reg = attrs.region, cmap = regionColors(skin);
   const col = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { const c = cmap[reg[i]] || cmap[SKIN]; col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+  const st = skin.style || {}, pa = attrs.position.array;
+  const cJ = new THREE.Color(skin.jersey), cA = new THREE.Color(skin.accent), cW = new THREE.Color('#f4f4f4');
+  for (let i = 0; i < n; i++) {
+    let c = cmap[reg[i]] || cmap[SKIN];
+    const x = pa[i * 3], y = pa[i * 3 + 1];
+    if (reg[i] === PSTRIPE && st.bolts) c = cA;
+    if (reg[i] === SOCK && st.crewSocks) c = y > 0.4 ? cA : y > 0.27 ? (y > 0.315 && y < 0.34 ? cA : cJ) : cW;   // red band, navy with stripe, white crew socks
+    if (reg[i] === SKIN && st.armSleeve && x < -0.25 && y < 1.25 && y > 0.75) c = cJ;                          // forearm sleeve
+    if (reg[i] === TAPE && st.armSleeve) c = x > 0 ? cA : cW;
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   for (const gr of info.groups) geo.addGroup(gr.start, gr.count, gr.mat);
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.95, 0), 1.3);
@@ -320,6 +345,18 @@ export function createHuman(skin) {
     for (let i = 0; i < jc.length / 3; i++) {
       const x = jp[i * 3], y = jp[i * 3 + 1], z = jp[i * 3 + 2];
       let col = base;
+      if ((skin.style || {}).bolts) {
+        if (Math.abs(x) > 0.12 && y > 1.3) {
+          const d = (Math.abs(x) - Math.abs(sh[0])) * 0.6 - (y - sh[1]) * 0.8;   // down the arm
+          const tri = (v) => 2 * Math.abs(v - Math.floor(v + 0.5));               // zig-zag
+          const bolt = d - 0.02 - 0.045 * tri(z * 14 + 0.25);
+          if (d > 0.06) col = trim;                                                 // red sleeve
+          if (Math.abs(bolt) < 0.017) col = white;                                  // white lightning bolt
+          else if (bolt > 0.017 && bolt < 0.04 && d < 0.06) col = trim;             // red edge under the bolt
+        }
+        jc[i * 3] = col.r; jc[i * 3 + 1] = col.g; jc[i * 3 + 2] = col.b;
+        continue;
+      }
       if (Math.abs(x) > 0.17) {
         // distance down the arm (arms rest angled out ~37 degrees)
         const d = (Math.abs(x) - Math.abs(sh[0])) * 0.6 - (y - sh[1]) * 0.8;
@@ -339,7 +376,8 @@ export function createHuman(skin) {
   collar.rotation.x = Math.PI / 2;
   attach('spine01', collar, new THREE.Vector3(0, meta.neckY + 0.005, sh[2] + 0.01));
   // cleats over the feet
-  const shoeMat = smat('#f4f4f4', 0.35, 0.02), soleMat = smat('#1d1d1d', 0.5), stripeMat = smat(skin.jersey, 0.4);
+  const st2 = skin.style || {};
+  const shoeMat = smat(st2.cleats || '#f4f4f4', 0.35, 0.02), soleMat = smat(st2.cleats ? '#f4f4f4' : '#1d1d1d', 0.5), stripeMat = smat(st2.cleats ? '#f4f4f4' : skin.jersey, 0.4);
   for (const s of ['L', 'R']) {
     const f = FEET[s];
     const w = f.max[0] - f.min[0] + 0.022, h = f.max[1] - f.min[1] + 0.012, d = f.max[2] - f.min[2] + 0.03;
@@ -360,7 +398,43 @@ export function createHuman(skin) {
   belt.scale.set(WAIST.rx + 0.008, 1, WAIST.rz + 0.008);
   attach('root', belt, new THREE.Vector3(WAIST.cx, WAIST.y, WAIST.cz));
   // numbers
-  const numTex = numberTexture(skin.number ?? 12, skin.accent);
+  if (st2.crowns || st2.towel) {
+    const crownTex = crownTexture();
+    const crownMat = new THREE.MeshStandardMaterial({ map: crownTex, transparent: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -4 });
+    owned.push(crownMat, crownTex);
+    if (st2.crowns) for (const sx of [-1, 1]) {
+      const cr = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.045), crownMat);
+      cr.rotation.y = Math.PI; cr.rotation.x = 0.35;
+      attach('spine01', cr, new THREE.Vector3(sx * 0.085, 1.475, CHEST.front - 0.05));
+    }
+    if (st2.towel) {
+      const tg = new THREE.PlaneGeometry(0.11, 0.3, 1, 6);
+      const tp = tg.attributes.position;
+      for (let i = 0; i < tp.count; i++) tp.setZ(i, -Math.pow((0.15 - tp.getY(i)) / 0.3, 2) * 0.03); // hangs out a little
+      tg.computeVertexNormals();
+      const towelTex = towelTexture(); owned.push(towelTex);
+      const towel = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ map: towelTex, roughness: 0.95, side: THREE.DoubleSide }));
+      owned.push(towel.material);
+      towel.rotation.y = Math.PI;
+      attach('root', towel, new THREE.Vector3(WAIST.cx + 0.075, WAIST.y - 0.165, WAIST.cz - WAIST.rz - 0.012));
+    }
+  }
+  const buckle = new THREE.Mesh(new RoundedBoxGeometry(0.05, 0.036, 0.012, 2, 0.004), smat('#c9ccd1', 0.25, 0.9));
+  attach('root', buckle, new THREE.Vector3(WAIST.cx, WAIST.y, WAIST.cz - WAIST.rz - 0.012));
+  if (st2.pads) {
+    const padMat2 = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(skin.pants).multiplyScalar(1.25), roughness: 0.45, clearcoat: 0.4 });
+    owned.push(padMat2);
+    for (const s of ['L', 'R']) {
+      const sx = s === 'L' ? -1 : 1;
+      const thigh = new THREE.Mesh(new THREE.SphereGeometry(0.075, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), padMat2);
+      thigh.scale.set(1.0, 0.42, 1.6); thigh.rotation.x = -Math.PI / 2 + 0.05;
+      attach('upperleg02.' + s, thigh, new THREE.Vector3(LEGS[s].thighX, 0.79, LEGS[s].thighZ + 0.004));
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.06, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), padMat2);
+      knee.scale.set(1.05, 0.5, 1.2); knee.rotation.x = -Math.PI / 2;
+      attach('lowerleg01.' + s, knee, new THREE.Vector3(LEGS[s].kneeX + sx * 0.002, info.meta.kneeY + 0.01, LEGS[s].kneeZ + 0.004));
+    }
+  }
+  const numTex = numberTexture(skin.number ?? 12, skin.accent, st2.whiteNumbers);
   const numMat = new THREE.MeshStandardMaterial({ map: numTex, transparent: true, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -4 });
   owned.push(numMat, numTex);
   for (const [z, ry] of [[CHEST.front - 0.036, Math.PI], [CHEST.back + 0.036, 0]]) {
@@ -407,12 +481,30 @@ export function createHuman(skin) {
   return { mesh, bones: byName, hand, owned, setHelmet };
 }
 
-function numberTexture(num, accent) {
+function crownTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.strokeStyle = '#ffffff'; g.lineJoin = 'round'; g.lineWidth = 6;
+  g.beginPath(); g.moveTo(14, 78); g.lineTo(10, 28); g.lineTo(38, 52); g.lineTo(64, 14); g.lineTo(90, 52); g.lineTo(118, 28); g.lineTo(114, 78); g.closePath(); g.fill();
+  g.fillRect(14, 82, 100, 8);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function towelTexture() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 176;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f2f2f0'; g.fillRect(0, 0, 64, 176);
+  for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.05})`; g.fillRect(Math.random() * 64, Math.random() * 176, 1, 2); }
+  g.fillStyle = '#2a2d3a';
+  g.beginPath(); g.moveTo(17, 150); g.lineTo(15, 124); g.lineTo(25, 136); g.lineTo(32, 118); g.lineTo(39, 136); g.lineTo(49, 124); g.lineTo(47, 150); g.closePath(); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+function numberTexture(num, accent, whiteFill) {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d');
   g.font = 'bold 82px Impact, Arial Black, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.lineWidth = 7; g.strokeStyle = '#ffffff'; g.strokeText(String(num), 64, 70);
-  g.fillStyle = accent; g.fillText(String(num), 64, 70);
+  g.lineWidth = 9; g.strokeStyle = whiteFill ? accent : '#ffffff'; g.strokeText(String(num), 64, 70);
+  g.fillStyle = whiteFill ? '#ffffff' : accent; g.fillText(String(num), 64, 70);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }

@@ -23,7 +23,7 @@ const store = {
 const profile = store.get('fr_profile', {});
 profile.name = profile.name || '';
 profile.mode = profile.mode || 'nobuild';
-profile.skin = sanitizeSkin(profile.skin || { preset: 'llamas', number: Math.floor(Math.random() * 99) + 1 });
+profile.skin = sanitizeSkin(profile.skin || { preset: 'thunder', number: Math.floor(Math.random() * 99) + 1 });
 const settings = { sens: store.get('fr_sens', 1) };
 let account = { bucks: 0, owned: [], stats: { wins: 0, kills: 0, matches: 0 } }; // from the server
 const stats = () => account.stats;
@@ -129,7 +129,7 @@ function previewLoop(ts) {
     if (previewEmote && since > 4) { previewEmote = 0; previewEmoteStart = t; }
     else if (!previewEmote && since > 10) { previewEmote = 1 + Math.floor(Math.random() * 5); previewEmoteStart = t; }
     pModel.rotation.y = Math.PI + (previewEmote ? 0 : 0.28 + Math.sin(t * 0.5) * 0.12);
-    pModel.userData.ball.visible = !previewEmote;
+    pModel.userData.ball.visible = false;
     animatePlayer(pModel, { speed: 0, phase: 0, hero: !previewEmote, emote: previewEmote, emoteT: t - previewEmoteStart, t }, 1 / 60);
   }
   pr.render(pScene, pCam);
@@ -155,6 +155,36 @@ for (const k of ['jersey', 'accent', 'helmet', 'pants']) {
   $(`c-${k}`).oninput = (e) => { profile.skin[k] = e.target.value; if (k === 'helmet') profile.skin.stripe = profile.skin.accent; refreshPreview(); };
   $(`c-${k}`).onchange = saveProfile;
 }
+// 📸 poster photo of your player on a purple studio background
+$('photo').onclick = () => {
+  const W = 1080, H = 1440;
+  const out = document.createElement('canvas'); out.width = W; out.height = H;
+  const g = out.getContext('2d');
+  const bg = g.createRadialGradient(W / 2, H * 0.35, 50, W / 2, H * 0.4, H * 0.8);
+  bg.addColorStop(0, '#8a5ee0'); bg.addColorStop(0.5, '#5b34b8'); bg.addColorStop(1, '#1d0d45');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // render the player big and sharp
+  const keep = { pr: pr.getPixelRatio(), aspect: pCam.aspect, pos: pCam.position.clone() };
+  pr.setPixelRatio(1); pr.setSize(W, H, false);
+  pCam.aspect = W / H; pCam.position.set(0, 1.05, 3.35); pCam.lookAt(0, 0.98, 0); pCam.updateProjectionMatrix();
+  pr.render(pScene, pCam);
+  g.drawImage(pr.domElement, 0, 0, W, H);
+  pr.setPixelRatio(keep.pr); pr.setSize(360, 380, false);
+  pCam.aspect = keep.aspect; pCam.position.copy(keep.pos); pCam.lookAt(0, 1.05, 0); pCam.updateProjectionMatrix();
+  // name plate
+  const preset = SKIN_PRESETS.find((p) => p.id === profile.skin.preset);
+  g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, H - 210, W, 210);
+  g.font = 'italic 900 92px "Arial Black", Impact, sans-serif'; g.fillStyle = '#ffffff'; g.textAlign = 'left';
+  g.fillText($('me-name').textContent.replace(' 👑', ''), 60, H - 105);
+  g.font = 'bold 36px "Trebuchet MS", sans-serif'; g.fillStyle = '#ffcc33';
+  g.fillText(`#${profile.skin.number}  ·  ${preset ? preset.team.toUpperCase() : ''}  ·  FOOTBALL ROYALE`, 64, H - 45);
+  out.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'my-football-royale-player.png';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+};
+
 // character creator: skin tone, hair, eyes, smile
 const swatchRow = (id, list, key) => {
   $(id).innerHTML = list.map((t) => `<button data-t="${t}" style="background:${t}"></button>`).join('');

@@ -192,7 +192,7 @@ function createRealPlayer(skin) {
     for (const [s, l] of [['L', 'L'], ['R', 'R']]) {
       B['upperleg01.' + s].rotation.set(P['leg' + l].rotation.x, 0, P['leg' + l].rotation.z);
       B['lowerleg01.' + s].rotation.set(P['knee' + l].rotation.x, 0, 0);
-      B['upperarm01.' + s].rotation.set(P['arm' + l].rotation.x, 0, P['arm' + l].rotation.z);
+      B['upperarm01.' + s].rotation.set(P['arm' + l].rotation.x, P['arm' + l].rotation.y, P['arm' + l].rotation.z);
       B['lowerarm01.' + s].rotation.set(P['elbow' + l].rotation.x, 0, 0);
     }
   };
@@ -445,7 +445,7 @@ export function animatePlayer(model, s, dt) {
   p.lasso.visible = s.emote === 7;
   let bx = 0, by = 0, bz = 0, bodyY = 0.98, sx = 0, sy = 0, hx = 0, hy = 0;
   let lL = 0, lR = 0, lLz = 0, lRz = 0, kL = -0.05, kR = -0.05;
-  let aL = 0.05, aR = 0.05, aLz = -0.12, aRz = 0.12, eL = 0.25, eR = 0.25;
+  let aL = 0.05, aR = 0.05, aLz = -0.12, aRz = 0.12, eL = 0.25, eR = 0.25, aLy = 0, aRy = 0;
   const pitch = s.pitch || 0;
   if (s.phase === 2) { // free fall: belly down, arms and legs spread
     bx = -1.35; bodyY = 1.0;
@@ -458,10 +458,11 @@ export function animatePlayer(model, s, dt) {
     lL = Math.sin(t * 2) * 0.15; lR = -lL; kL = kR = -0.25;
   } else if (s.hero) {
     // confident Locker Room stance: feet apart, item held out in the right hand
-    lLz = -0.13; lRz = 0.12; lL = 0.04; lR = -0.06; kL = kR = -0.06;
-    aR = 0.55; aRz = 0.32; eR = 0.95;
-    aL = 0.12; aLz = -0.28; eL = 0.45;
-    sy = 0.12; sx = 0.03; hx = -0.04; hy = -0.08;
+    // arms crossed, feet planted wide, chin up
+    lLz = -0.14; lRz = 0.13; lL = 0.03; lR = -0.05; kL = kR = -0.05;
+    aR = 0.12; aRy = 0.95; aRz = 0.1; eR = 1.6;
+    aL = 0.18; aLy = -0.95; aLz = -0.1; eL = 1.68;
+    sy = 0.05; sx = 0.02; hx = -0.08; hy = -0.1;
     bodyY += Math.sin(t * 1.8) * 0.004; aLz += Math.sin(t * 1.8) * 0.015;
   } else if (s.emote) {
     const e = s.emoteT;
@@ -554,7 +555,7 @@ export function animatePlayer(model, s, dt) {
   p.head.rotation.set(hx, hy, 0);
   p.legL.rotation.set(lL, 0, lLz); p.legR.rotation.set(lR, 0, lRz);
   p.kneeL.rotation.x = kL; p.kneeR.rotation.x = kR;
-  p.armL.rotation.set(aL, 0, aLz); p.armR.rotation.set(aR, 0, aRz);
+  p.armL.rotation.set(aL, aLy, aLz); p.armR.rotation.set(aR, aRy, aRz);
   p.elbowL.rotation.x = eL; p.elbowR.rotation.x = eR;
   if (u.rig) u.rig();
 }

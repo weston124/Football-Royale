@@ -7,6 +7,9 @@ export const EYE_COLORS = ['#3d78b8', '#5f8f6a', '#5a3a22', '#2a1a10', '#7a8a96'
 
 // unlock: earned by playing. price: bought in the Longhorn Item Shop with Ball Bucks.
 export const SKIN_PRESETS = [
+  // style: extra uniform details drawn by the game (lightning bolts, towel, pads, crowns...)
+  { id: 'thunder', team: 'Royale Thunder', jersey: '#1c2030', accent: '#d42a2a', helmet: '#1c2030', stripe: '#d42a2a', mask: '#d9d9d9', pants: '#1c2030',
+    style: { bolts: true, towel: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, whiteNumbers: true, cleats: '#d42a2a' } },
   { id: 'llamas',   team: 'Lava Llamas',       jersey: '#e2471f', accent: '#ffd23f', helmet: '#e2471f', stripe: '#ffd23f', mask: '#222222', pants: '#ffffff' },
   { id: 'narwhals', team: 'Neon Narwhals',     jersey: '#14d1c4', accent: '#ff3fa4', helmet: '#1d1f3a', stripe: '#14d1c4', mask: '#ff3fa4', pants: '#1d1f3a' },
   { id: 'coyotes',  team: 'Cosmic Coyotes',    jersey: '#4b2a8c', accent: '#f2c14e', helmet: '#4b2a8c', stripe: '#f2c14e', mask: '#c0c0c0', pants: '#f2c14e' },
@@ -75,6 +78,8 @@ export function sanitizeSkin(s, profile) {
   out.smile = s.smile !== false;
   out.helmetOn = s.helmetOn !== false; // players choose helmet on or off
   out.horns = p.horns || null;
+  // every outfit gets the full game-day look; Royale Thunder also has white numbers
+  out.style = p.style || { bolts: true, towel: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, cleats: p.accent };
   const n = parseInt(s.number, 10);
   out.number = Number.isFinite(n) ? Math.max(0, Math.min(99, n)) : 12;
   return out;
