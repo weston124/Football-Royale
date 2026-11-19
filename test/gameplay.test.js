@@ -9,7 +9,7 @@ import path from 'node:path';
 import { World, stepFalling, stepPlayer } from '../shared/physics.js';
 import { generateMap } from '../shared/map.js';
 
-const PORT = 3999;
+const PORT = Number(process.env.TEST_PORT) || 3999;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
