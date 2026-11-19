@@ -138,7 +138,7 @@ for bname, lst in W.items():
             dominant[vi] = (bname, w)
 
 # ---------- paint the uniform (regions) ----------
-SKIN, JERSEY, PANTS, SOCK, SHOE, GLOVE, ACCENT, BROW, LIPS, EYEBLACK, TAPE, LASH = range(12)
+SKIN, JERSEY, PANTS, SOCK, SHOE, GLOVE, ACCENT, BROW, LIPS, EYEBLACK, TAPE, LASH, PSTRIPE = range(13)
 hipY = J[bones['upperleg01.L']['head']][1]
 kneeY = J[bones['lowerleg01.L']['head']][1]
 ankleY = J[bones['foot.L']['head']][1]
@@ -164,7 +164,7 @@ for i in used:
         t = math.dist(P[i], J[bones['upperarm01.' + side]['head']])
         r = JERSEY if (t < 0.16 or b.startswith('shoulder')) else SKIN
     elif b.startswith('lowerleg'):
-        r = PANTS if y > kneeY - 0.035 else ACCENT if kneeY - 0.16 < y < kneeY - 0.12 else SOCK
+        r = PANTS if y > kneeY - 0.035 else SOCK
     elif b.startswith(('upperleg', 'pelvis')) and y < hipY - 0.04:
         r = PANTS
     elif b.startswith(('neck', 'head', 'jaw', 'eye', 'oris', 'oculi', 'orbicularis', 'levator', 'risorius', 'temporalis', 'special', 'tongue')):
@@ -182,6 +182,16 @@ for i in used:
             r = JERSEY
     else:  # torso and hips: clean bands
         r = JERSEY if y >= waistY - 0.015 else PANTS
+    # stripe down the outside of each pant leg (from the hip to the knee)
+    if r == PANTS and y < waistY - 0.04:
+        side = 'L' if x < 0 else 'R'
+        h = J[bones['upperleg01.' + side]['head']]; k = J[bones['lowerleg01.' + side]['head']]
+        axis = sub(k, h); L2 = sum(a * a for a in axis)
+        t = max(0.0, min(1.0, sum(a * b for a, b in zip(sub(P[i], h), axis)) / L2))
+        c = [h[a] + axis[a] * t for a in range(3)]
+        off = sub(P[i], c)
+        if off[0] * (-1 if side == 'L' else 1) > 0.03 and abs(off[2]) < 0.024 and t < 0.97:
+            r = PSTRIPE
     region[i] = r
 
 # ---------- normals ----------
@@ -199,7 +209,7 @@ for f, g in faces:
 
 # group triangles by material: 0 = skin-like, 1 = cloth, 2 = shoes
 def mat_of(r):
-    return 2 if r == SHOE else 1 if r in (JERSEY, PANTS, SOCK, GLOVE, ACCENT, TAPE) else 0
+    return 2 if r == SHOE else 1 if r in (JERSEY, PANTS, SOCK, GLOVE, ACCENT, TAPE, PSTRIPE) else 0
 remap = {v: n for n, v in enumerate(used)}
 groups_out, idx = [], []
 for m in (0, 1, 2):

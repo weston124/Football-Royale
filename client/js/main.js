@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { generateMap } from '/shared/map.js';
 import { SKIN_PRESETS, SKIN_TONES, HAIR_COLORS, EYE_COLORS, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
 import { RARITIES } from '/shared/weapons.js';
-import { createPlayer, animatePlayer, disposePlayer, setupEnvironment, loadHuman } from './models.js';
+import { createPlayer, animatePlayer, disposePlayer, setupEnvironment, loadHuman, createFootball } from './models.js';
 
 try { await loadHuman(); } catch (e) { console.warn('Realistic model failed to load, using simple players', e); }
 import { drawMapImage } from './world.js';
@@ -103,11 +103,13 @@ function refreshPreview() {
   if (pModel) { pScene.remove(pModel); disposePlayer(pModel); }
   pModel = createPlayer(profile.skin);
   pModel.rotation.y = Math.PI;
+  const ball = createFootball(0.23); ball.rotation.set(0.3, 0, 0.5); ball.position.set(0.01, 0.02, -0.03);
+  pModel.userData.parts.hand.add(ball); pModel.userData.ball = ball;
   pScene.add(pModel);
   const preset = SKIN_PRESETS.find((p) => p.id === profile.skin.preset);
   $('skin-team').textContent = preset ? preset.team : '';
   $('c-jersey').value = profile.skin.jersey; $('c-accent').value = profile.skin.accent;
-  $('c-helmet').value = profile.skin.helmet; $('c-number').value = profile.skin.number;
+  $('c-helmet').value = profile.skin.helmet; $('c-pants').value = profile.skin.pants; $('c-number').value = profile.skin.number;
   for (const [id, key] of [['tones', 'tone'], ['hairs', 'hair'], ['eyes', 'eyes']]) [...$(id).children].forEach((b) => b.classList.toggle('sel', b.dataset.t === profile.skin[key]));
   $('hair-style').value = profile.skin.hairStyle; $('smile').checked = profile.skin.smile !== false; $('helmet-on').checked = profile.skin.helmetOn !== false;
 }
@@ -116,9 +118,14 @@ function previewLoop(ts) {
   requestAnimationFrame(previewLoop);
   const t = ts / 1000;
   if (pModel) {
-    pModel.rotation.y = Math.PI + Math.sin(t * 0.6) * 0.6;
-    if (!previewEmote || t - previewEmoteStart > 4) { previewEmote = 1 + Math.floor(Math.random() * 5); previewEmoteStart = t; }
-    animatePlayer(pModel, { speed: 0, phase: 0, emote: previewEmote, emoteT: t - previewEmoteStart, t }, 1 / 60);
+    // stand in the hero pose; show off an emote every so often
+    if (!previewEmoteStart) previewEmoteStart = t;
+    const since = t - previewEmoteStart;
+    if (previewEmote && since > 4) { previewEmote = 0; previewEmoteStart = t; }
+    else if (!previewEmote && since > 10) { previewEmote = 1 + Math.floor(Math.random() * 5); previewEmoteStart = t; }
+    pModel.rotation.y = Math.PI + (previewEmote ? 0 : 0.28 + Math.sin(t * 0.5) * 0.12);
+    pModel.userData.ball.visible = !previewEmote;
+    animatePlayer(pModel, { speed: 0, phase: 0, hero: !previewEmote, emote: previewEmote, emoteT: t - previewEmoteStart, t }, 1 / 60);
   }
   pr.render(pScene, pCam);
 }
@@ -139,7 +146,7 @@ $('skins').onclick = (e) => {
   profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn });
   saveProfile(); renderSkins(); refreshPreview();
 };
-for (const k of ['jersey', 'accent', 'helmet']) {
+for (const k of ['jersey', 'accent', 'helmet', 'pants']) {
   $(`c-${k}`).oninput = (e) => { profile.skin[k] = e.target.value; if (k === 'helmet') profile.skin.stripe = profile.skin.accent; refreshPreview(); };
   $(`c-${k}`).onchange = saveProfile;
 }

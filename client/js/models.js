@@ -454,6 +454,13 @@ export function animatePlayer(model, s, dt) {
   } else if (s.phase === 3) { // gliding: holding the straps
     aL = aR = PI - 0.35; aLz = -0.3; aRz = 0.3; eL = eR = 0.5;
     lL = Math.sin(t * 2) * 0.15; lR = -lL; kL = kR = -0.25;
+  } else if (s.hero) {
+    // confident Locker Room stance: feet apart, item held out in the right hand
+    lLz = -0.13; lRz = 0.12; lL = 0.04; lR = -0.06; kL = kR = -0.06;
+    aR = 0.55; aRz = 0.32; eR = 0.95;
+    aL = 0.12; aLz = -0.28; eL = 0.45;
+    sy = 0.12; sx = 0.03; hx = -0.04; hy = -0.08;
+    bodyY += Math.sin(t * 1.8) * 0.004; aLz += Math.sin(t * 1.8) * 0.015;
   } else if (s.emote) {
     const e = s.emoteT;
     switch (s.emote) {

@@ -15,7 +15,7 @@ let JERSEY_GEO = null;
 let HEAD = null;          // head shape for hair
 let MOUTH = null;         // where the smile goes    // loose jersey shell over the shoulder pads          // foot boxes for the cleats
 
-const SKIN = 0, JERSEY = 1, PANTS = 2, SOCK = 3, SHOE = 4, GLOVE = 5, ACCENT = 6, BROW = 7, LIPS = 8, EYEBLACK = 9, TAPE = 10, LASH = 11;
+const SKIN = 0, JERSEY = 1, PANTS = 2, SOCK = 3, SHOE = 4, GLOVE = 5, ACCENT = 6, BROW = 7, LIPS = 8, EYEBLACK = 9, TAPE = 10, LASH = 11, PSTRIPE = 12;
 
 export async function loadHuman(base = '/assets/') {
   const [info, bin] = await Promise.all([
@@ -110,9 +110,9 @@ function regionColors(skin) {
   const c = (h) => new THREE.Color(h);
   const tone = c(skin.tone || '#c98e62');
   const map = {
-    [SKIN]: tone, [JERSEY]: c(skin.jersey), [PANTS]: c(skin.pants), [SOCK]: c(skin.accent), [SHOE]: c('#161616'),
-    [GLOVE]: c(skin.accent), [ACCENT]: c(skin.accent), [BROW]: tone, [LIPS]: tone.clone().lerp(c('#a0524a'), 0.45),
-    [EYEBLACK]: skin.helmetOn === false ? tone : c('#111111'), [TAPE]: c('#f2f2f2'), [LASH]: c('#1a120c'),
+    [SKIN]: tone, [JERSEY]: c(skin.jersey), [PANTS]: c(skin.pants), [SOCK]: c(skin.jersey), [SHOE]: c('#f2f2f2'),
+    [GLOVE]: c('#f4f4f4'), [ACCENT]: c(skin.accent), [BROW]: tone, [LIPS]: tone.clone().lerp(c('#a0524a'), 0.45),
+    [EYEBLACK]: skin.helmetOn === false ? tone : c('#111111'), [PSTRIPE]: c(skin.jersey), [TAPE]: c('#f2f2f2'), [LASH]: c('#1a120c'),
   };
   return map;
 }
@@ -299,8 +299,29 @@ export function createHuman(skin) {
   attach('head', helmet, new THREE.Vector3(0, eyeY + 0.03, eyeZ + 0.105));
   const iris = skin.eyes || IRIS[(skin.number || 0) % IRIS.length];
   for (const s of ['L', 'R']) attach('head', buildEye(meta.eyes[s].r * 0.95, iris), new THREE.Vector3(...meta.eyes[s].c));
-  const padMat = new THREE.MeshStandardMaterial({ color: skin.jersey, roughness: 0.68, side: THREE.DoubleSide }); owned.push(padMat);
-  const jersey = new THREE.SkinnedMesh(JERSEY_GEO, padMat);
+  const padMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, side: THREE.DoubleSide }); owned.push(padMat);
+  // two white stripes around each sleeve, like a real game jersey
+  const jgeo = new THREE.BufferGeometry();
+  for (const k of ['position', 'skinIndex', 'skinWeight', 'normal']) jgeo.setAttribute(k, JERSEY_GEO.getAttribute(k));
+  jgeo.setIndex(JERSEY_GEO.index); jgeo.boundingSphere = JERSEY_GEO.boundingSphere;
+  {
+    const jp = JERSEY_GEO.getAttribute('position').array, jc = new Float32Array(jp.length);
+    const base = new THREE.Color(skin.jersey), white = new THREE.Color('#ffffff'), trim = new THREE.Color(skin.accent);
+    const sh = info.meta.shoulder;
+    for (let i = 0; i < jc.length / 3; i++) {
+      const x = jp[i * 3], y = jp[i * 3 + 1], z = jp[i * 3 + 2];
+      let col = base;
+      if (Math.abs(x) > 0.17) {
+        // distance down the arm (arms rest angled out ~37 degrees)
+        const d = (Math.abs(x) - Math.abs(sh[0])) * 0.6 - (y - sh[1]) * 0.8;
+        if ((d > 0.085 && d < 0.1) || (d > 0.115 && d < 0.13)) col = white;
+        else if (d >= 0.1 && d <= 0.115) col = trim;
+      }
+      jc[i * 3] = col.r; jc[i * 3 + 1] = col.g; jc[i * 3 + 2] = col.b;
+    }
+    jgeo.setAttribute('color', new THREE.BufferAttribute(jc, 3));
+  }
+  const jersey = new THREE.SkinnedMesh(jgeo, padMat);
   jersey.bind(mesh.skeleton, mesh.bindMatrix);
   mesh.add(jersey);
   const accMat = smat(skin.accent, 0.72);
@@ -309,7 +330,7 @@ export function createHuman(skin) {
   collar.rotation.x = Math.PI / 2;
   attach('spine01', collar, new THREE.Vector3(0, meta.neckY + 0.005, sh[2] + 0.01));
   // cleats over the feet
-  const shoeMat = smat('#151515', 0.35, 0.05), soleMat = smat('#e9e9e9', 0.5), stripeMat = smat(skin.accent, 0.4);
+  const shoeMat = smat('#f4f4f4', 0.35, 0.02), soleMat = smat('#1d1d1d', 0.5), stripeMat = smat(skin.jersey, 0.4);
   for (const s of ['L', 'R']) {
     const f = FEET[s];
     const w = f.max[0] - f.min[0] + 0.022, h = f.max[1] - f.min[1] + 0.012, d = f.max[2] - f.min[2] + 0.03;
