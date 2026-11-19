@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { SHOP } from '../shared/skins.js';
 
-const USERNAME = /^[A-Za-z0-9_]{3,16}$/;
+const USERNAME = /^[A-Za-z0-9_]+( [A-Za-z0-9_]+)*$/; // single spaces between words are OK
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
 const BLOCKED = ['fuck', 'shit', 'bitch', 'cunt', 'nigg', 'fag', 'slut', 'whore', 'dick', 'pussy', 'penis', 'vagina', 'rape', 'nazi', 'hitler', 'porn', 'sex', 'admin', 'moderator'];
 const SESSION_DAYS = 30;
@@ -50,10 +50,10 @@ export function createAccounts(root) {
 
   return {
     async signup({ email, username, password, ageOk }, ip) {
-      email = String(email || '').trim(); username = String(username || '').trim(); password = String(password || '');
+      email = String(email || '').trim(); username = String(username || '').trim().toUpperCase(); password = String(password || ''); // names are ALL CAPS
       if (!ageOk) return { error: 'Please confirm you are 13 or older, or that a parent said it is OK.' };
       if (!EMAIL.test(email)) return { error: 'That email does not look right.' };
-      if (!USERNAME.test(username)) return { error: 'Usernames are 3-16 letters, numbers or _ (no spaces).' };
+      if (!USERNAME.test(username) || username.length < 3 || username.length > 16) return { error: 'Usernames are 3-16 letters, numbers, _ or single spaces.' };
       if (BLOCKED.some((w) => username.toLowerCase().includes(w))) return { error: 'Please pick a different username.' };
       if (password.length < 6 || password.length > 200) return { error: 'Passwords need at least 6 characters.' };
       if (password.toLowerCase() === username.toLowerCase()) return { error: 'Your password can not be your username.' };
@@ -84,7 +84,9 @@ export function createAccounts(root) {
     resume(token) {
       const s = db.sessions[tokenHash(token)];
       if (!s || s.exp < Date.now()) return null;
-      return db.users[s.id] || null;
+      const u = db.users[s.id] || null;
+      if (u && u.username !== u.username.toUpperCase()) { u.username = u.username.toUpperCase(); save(); } // older accounts
+      return u;
     },
     logout(token) { delete db.sessions[tokenHash(token)]; save(); },
     publicView(u) { return { username: u.username, bucks: u.bucks, owned: u.owned, stats: u.stats, isAdmin: !!u.isAdmin }; },

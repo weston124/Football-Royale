@@ -1,0 +1,14 @@
+# One-click setup for Render.com (New -> Blueprint, pick this repository)
+services:
+  - type: web
+    name: football-royale
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: ADMIN_USERS          # these usernames get the in-game 👑 Admin drop-down
+        value: LONGHORNS 1
+      - key: ADMIN_PASSWORD       # password for the /admin web panel; Render asks you for it
+        sync: false

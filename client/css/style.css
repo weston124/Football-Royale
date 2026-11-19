@@ -10,7 +10,7 @@ button.big { font-size: 22px; padding: 14px 20px; width: 100%; background: #ff5a
 input, select { background: #fff; color: #111; border: 0; border-radius: 8px; padding: 9px 10px; }
 
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 14, 32, .55); z-index: 20; }
-#menu { background: radial-gradient(ellipse at 70% 40%, #2c5bbf 0%, #12224a 55%, #0a1226 100%); gap: 40px; padding: 24px; overflow: auto; }
+#menu { background: linear-gradient(90deg, rgba(4,10,28,.78) 0%, rgba(4,10,28,.45) 32%, rgba(4,10,28,.08) 55%, rgba(4,10,28,.08) 72%, rgba(4,10,28,.55) 100%); gap: 40px; padding: 24px; overflow: auto; }
 .menu-left { width: 380px; display: flex; flex-direction: column; gap: 10px; }
 .menu-right { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .logo { font-size: 64px; line-height: .9; margin: 0; font-style: italic; letter-spacing: 2px; text-shadow: 4px 4px 0 #ff5a2a, 8px 8px 0 rgba(0,0,0,.35); }
@@ -26,7 +26,7 @@ input, select { background: #fff; color: #111; border: 0; border-radius: 8px; pa
 .stats { background: rgba(0,0,0,.25); padding: 8px 12px; border-radius: 10px; font-size: 14px; }
 .controls { background: rgba(0,0,0,.25); padding: 8px 12px; border-radius: 10px; font-size: 13px; }
 .controls td:first-child { font-weight: 800; color: #ffcc33; padding-right: 12px; white-space: nowrap; }
-#preview { width: 360px; height: 380px; background: radial-gradient(circle at 50% 70%, rgba(255,255,255,.18), transparent 65%); border-radius: 20px; }
+#preview { width: 360px; height: 380px; background: transparent; border-radius: 20px; }
 .skin-team { font-size: 22px; font-weight: 800; }
 .skins { display: grid; grid-template-columns: repeat(5, 64px); gap: 8px; }
 .skins button { width: 64px; height: 64px; padding: 0; border-radius: 12px; position: relative; box-shadow: 0 3px 0 rgba(0,0,0,.4); font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; }
@@ -104,7 +104,7 @@ input, select { background: #fff; color: #111; border: 0; border-radius: 8px; pa
 #dmgnums div.pad { color: #7cc4ff; }
 
 /* ===== news, squads, broadcasts, parties ===== */
-.menu-news { width: 300px; align-self: stretch; display: flex; flex-direction: column; gap: 8px; max-height: 92vh; overflow: auto; }
+.menu-news { padding-top: 44px; width: 300px; align-self: stretch; display: flex; flex-direction: column; gap: 8px; max-height: 92vh; overflow: auto; }
 .menu-news h3 { margin: 6px 0 0; }
 .news-item { background: rgba(0,0,0,.28); border-left: 4px solid #ffcc33; border-radius: 8px; padding: 8px 10px; font-size: 14px; white-space: pre-wrap; user-select: text; }
 .news-item b { display: block; font-size: 15px; margin-bottom: 3px; }
@@ -162,7 +162,8 @@ button.small { padding: 4px 10px; font-size: 12px; }
 /* ===== sign in ===== */
 .who { background: rgba(0,0,0,.28); border-radius: 10px; padding: 8px 12px; display: flex; gap: 8px; align-items: center; }
 .who b { color: #ffcc33; flex: 1; }
-#auth { background: radial-gradient(ellipse at 50% 30%, #2c5bbf 0%, #12224a 60%, #0a1226 100%); z-index: 40; }
+.mode-signup #a-user { text-transform: uppercase; }
+#auth { background: radial-gradient(ellipse at 50% 55%, rgba(4,10,28,.55) 0%, rgba(4,10,28,.15) 70%); z-index: 40; }
 .panel.auth { text-align: left; width: 400px; }
 .panel.auth form { display: flex; flex-direction: column; gap: 8px; }
 .small-logo { font-size: 40px; text-align: center; }
@@ -171,7 +172,7 @@ button.small { padding: 4px 10px; font-size: 12px; }
 #auth.mode-login .signup-only, #auth.mode-signup .login-only { display: none; }
 
 /* ===== in-game admin drop-down ===== */
-#admin-menu { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 61; display: flex; flex-direction: column; align-items: center; }
+#admin-menu { position: fixed; top: 12px; right: 232px; z-index: 61; display: flex; flex-direction: column; align-items: flex-end; }
 #admin-toggle { background: linear-gradient(90deg, #ffcc33, #ff8a3d); padding: 6px 14px; font-size: 14px; }
 #admin-drop { margin-top: 6px; width: 320px; background: rgba(12, 20, 46, .96); border: 2px solid #ffcc33; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
 .ad-sec { display: flex; flex-direction: column; gap: 6px; }

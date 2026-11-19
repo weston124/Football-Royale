@@ -9,6 +9,7 @@ try { await loadHuman(); } catch (e) { console.warn('Realistic model failed to l
 import { drawMapImage } from './world.js';
 import { Hud } from './hud.js';
 import { Game } from './game.js';
+import { createMenuScene } from './menuScene.js';
 import { initAudio, sfx, startPartyMusic } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -63,6 +64,19 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+
+// stadium home-screen background (runs whenever you're not in a match)
+const menuScene = createMenuScene();
+let lastBg = performance.now();
+function bgLoop(t) {
+  requestAnimationFrame(bgLoop);
+  const dt = Math.min(0.1, (t - lastBg) / 1000); lastBg = t;
+  if (game) return;
+  menuScene.update(dt);
+  renderer.autoClear = true;
+  renderer.render(menuScene.scene, menuScene.camera);
+}
+requestAnimationFrame(bgLoop);
 
 let game = null, myId = null, currentRoom = null, partyInfo = null, info = { news: [], events: [] };
 

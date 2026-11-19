@@ -10,7 +10,7 @@ export const BOT_NAMES = [
   'Coach Bot', 'Spiral Sue', 'Hike Mike', 'Sideline Sid', 'Fourth Down Fay', 'Sack Jack', 'Pylon Paz', 'Two Point Tim',
   'Halftime Hal', 'Blocker Bo', 'Scramble Sky', 'Hail Mary Mo', 'Onside Ollie', 'Field Goal Flo', 'Chain Gang Cy',
   'Red Zone Rex', 'Audible Abe', 'Blindside Bree', 'Draw Play Dee', 'Flea Flicker', 'Juke Jo', 'Overtime Otis',
-];
+].map((n) => n.toUpperCase());
 
 const yawTo = (dx, dz) => Math.atan2(-dx, -dz);
 
