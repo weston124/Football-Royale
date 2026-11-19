@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MAP_HALF } from '/shared/constants.js';
-import { mat, createFootball } from './models.js';
+import { mat, createFootball, bakeGroup, propMaterial } from './models.js';
 
 function canvasTex(w, h, draw, repeat) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -67,10 +67,14 @@ export function buildWorld(scene, map) {
   scene.add(ocean);
 
   // ---- flat decorations ----
+  // Untextured flats and all the small props (goal posts, tents, trophy...) are collected in `props`
+  // and baked into ONE vertex-colored mesh at the end: ~2 draw calls instead of ~150.
+  const props = new THREE.Group();
   const flat = (x, z, w, d, material, y) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material);
     m.rotation.x = -Math.PI / 2; m.position.set(x, y, z);
-    scene.add(m); return m;
+    if (material.map) scene.add(m); else props.add(m);
+    return m;
   };
   const fieldBig = new THREE.MeshLambertMaterial({ map: fieldTexture(false) });
   const fieldSmall = new THREE.MeshLambertMaterial({ map: fieldTexture(true) });
@@ -89,7 +93,7 @@ export function buildWorld(scene, map) {
         for (const k of [-1, 1]) { const u = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.1 * s, 6 * s), y); u.position.set(0, 6 * s, k * 2.8 * s); g.add(u); }
         g.position.set(d.x, 0, d.z);
         if (d.rot) g.rotation.y = Math.PI / 2;
-        scene.add(g); break;
+        props.add(g); break;
       }
       case 'scoreboard': {
         const tex = canvasTex(512, 256, (g, w, h) => {
@@ -101,14 +105,14 @@ export function buildWorld(scene, map) {
         const sb = new THREE.Mesh(new THREE.BoxGeometry(24, 12, 1), [mat('#222'), mat('#222'), mat('#222'), mat('#222'), new THREE.MeshBasicMaterial({ map: tex }), new THREE.MeshBasicMaterial({ map: tex })]);
         sb.position.set(d.x, d.h + 6, d.z + 2);
         scene.add(sb);
-        const pole = new THREE.Mesh(new THREE.BoxGeometry(1, d.h, 1), mat('#555')); pole.position.set(d.x, d.h / 2, d.z + 2); scene.add(pole);
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(1, d.h, 1), mat('#555')); pole.position.set(d.x, d.h / 2, d.z + 2); props.add(pole);
         break;
       }
       case 'tent': {
         const roof = new THREE.Mesh(new THREE.ConeGeometry(3.4, 1.6, 4), mat(d.color));
-        roof.position.set(d.x, 3.4, d.z); roof.rotation.y = Math.PI / 4; scene.add(roof);
+        roof.position.set(d.x, 3.4, d.z); roof.rotation.y = Math.PI / 4; props.add(roof);
         for (const [a, b] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
-          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6), mat('#ddd')); leg.position.set(d.x + a, 1.3, d.z + b); scene.add(leg);
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6), mat('#ddd')); leg.position.set(d.x + a, 1.3, d.z + b); props.add(leg);
         }
         break;
       }
@@ -117,17 +121,22 @@ export function buildWorld(scene, map) {
         const base = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 0.6), gold); base.position.y = 0.3; g.add(base);
         const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.4), gold); stem.position.y = 1.3; g.add(stem);
         const ball = createFootball(1.4); ball.position.y = 2.4; ball.rotation.x = 0.6; g.add(ball);
-        g.position.set(d.x, d.y, d.z); scene.add(g); break;
+        g.position.set(d.x, d.y, d.z); props.add(g); break;
       }
       case 'bigball': {
-        const b = createFootball(10); b.position.set(d.x, d.y + 2.6, d.z); b.rotation.x = 0.3; scene.add(b); break;
+        const b = createFootball(10); b.position.set(d.x, d.y + 2.6, d.z); b.rotation.x = 0.3; props.add(b); break;
       }
       case 'tank': {
         const t = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 10), mat('#c8d3e0'));
-        t.scale.y = 0.7; t.position.set(d.x, d.y + 8, d.z); scene.add(t);
+        t.scale.y = 0.7; t.position.set(d.x, d.y + 8, d.z); props.add(t);
         break;
       }
     }
+  }
+
+  {
+    const baked = bakeGroup(props);
+    scene.add(new THREE.Mesh(baked, propMaterial));
   }
 
   // ---- solid boxes merged into one mesh (fast!) ----
@@ -200,6 +209,12 @@ export function buildWorld(scene, map) {
   storm.renderOrder = 2;
   scene.add(storm);
 
+  // nothing but the storm ever moves: skip the per-frame matrix updates of the static city
+  for (const o of scene.children) {
+    if (o === storm) continue;
+    o.updateMatrixWorld(true);
+    o.traverse((x) => { x.matrixAutoUpdate = false; x.matrixWorldAutoUpdate = false; });
+  }
   return { storm, stormTex, sun };
 }
 

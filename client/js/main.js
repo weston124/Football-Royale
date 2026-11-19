@@ -450,8 +450,10 @@ $('copy-link').onclick = () => {
 };
 
 // ---------- match ----------
+let earlySnaps = null; // snapshots that arrive before the Game exists (they are delta-encoded: none may be lost)
 net.on('start', (m) => {
   showScreen('loading');
+  earlySnaps = [];
   setTimeout(() => {
     if (game) game.destroy();
     for (const id of ['menu', 'lobby', 'loading']) $(id).classList.add('hidden');
@@ -466,10 +468,12 @@ net.on('start', (m) => {
     });
     stopMenuMusic();
     game.start(m);
+    for (const s of earlySnaps || []) game.onSnapshot(s);
+    earlySnaps = null;
     renderer.domElement.requestPointerLock?.();
   }, 30);
 });
-net.on('s', (m) => game && game.onSnapshot(m));
+net.on('s', (m) => { if (earlySnaps) earlySnaps.push(m); else if (game) game.onSnapshot(m); });
 net.on('end', (m) => game && game.onEnd(m));
 net.on('closed', () => {
   if (game) { game.destroy(); game = null; }
@@ -698,7 +702,8 @@ import('./quality.js').then((q) => {
 syncSettingsUI();
 
 // debug hook for automated tests
-window.__fr = { get game() { return game; } };
+window.__fr = window.__fr || {}; // quality.js adds window.__fr.quality
+Object.defineProperty(window.__fr, 'game', { get() { return game; }, configurable: true });
 
 // ---------- start ----------
 initTouchEnvironment(); // phones & tablets: touch CSS, no pinch-zoom (on-screen controls start with each match)

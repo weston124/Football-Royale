@@ -10,6 +10,7 @@ import {
   ZONE_START_RADIUS, ZONE_PHASES, BUILD, PICKUP_RANGE, MAP_HALF, BOT_DIFFICULTY,
 } from '../shared/constants.js';
 import { updateBot, BOT_NAMES } from './bots.js';
+import { NFIELDS, KEY_TICKS, quantize, encodeEntry, bandFor, extraDelay } from '../shared/netcodec.js';
 
 const MAP = generateMap();
 const DT = 1 / TICK_RATE;
@@ -288,6 +289,7 @@ export class Match {
       if (this.state === 'lobby' && p.id === this.hostId) this.start();
       return;
     }
+    if (m.t === 'spec') { p.specId = m.id | 0; return; }   // who a dead player watches (interest management)
     if (this.state !== 'play' || !p.alive) return;
     switch (m.t) {
       case 'in': return this.onInput(p, m);
@@ -401,13 +403,14 @@ export class Match {
     if (!aim) return;
     const ox = p.x, oy = p.y + PLAYER.eye, oz = p.z;
     const rt = Math.max(t - 0.35, Math.min(t, +m.rt || t));
+    const rtFor = (q) => rt - this.netDelay(p, q);   // far players are drawn a little further in the past
     const code = WCODES.indexOf(it.w) * 8 + (it.r || 0);
 
     if (W.kind === 'melee') {
       let hitAny = false;
       for (const q of this.players.values()) {
         if (q === p || !q.alive || q.phase !== 'ground') continue;
-        const pos = this.posAt(q, rt);
+        const pos = this.posAt(q, rtFor(q));
         const dx = pos.x - ox, dz = pos.z - oz, dist = Math.hypot(dx, dz);
         if (dist > W.range + 0.4 || Math.abs(pos.y - p.y) > 1.6) continue;
         if ((dx * aim[0] + dz * aim[2]) / (dist || 1) < 0.5) continue;
@@ -456,7 +459,7 @@ export class Match {
       let bestT = wh ? wh.t : W.range, bestQ = null;
       for (const q of this.players.values()) {
         if (q === p || !q.alive || q.phase === 'blimp') continue;
-        const pos = q.phase === 'ground' ? this.posAt(q, rt) : q;
+        const pos = q.phase === 'ground' ? this.posAt(q, rtFor(q)) : q;
         if (Math.abs(pos.x - ox) > bestT + 2 || Math.abs(pos.z - oz) > bestT + 2) continue;
         const tq = rayPlayer(pos.x, pos.y, pos.z, ox, oy, oz, d[0], d[1], d[2]);
         if (tq !== null && tq < bestT) {
@@ -786,34 +789,87 @@ export class Match {
     }
   }
 
+  // Snapshots: per-client interest management + delta encoding (see shared/netcodec.js).
+  // Near players are sent every tick, far ones every 2nd/4th tick, unchanged ones not at all.
   sendSnapshots(t) {
-    const ps = [];
+    const tick = Math.round(t * TICK_RATE);
+    // quantize every visible player once per tick
+    const cur = this._netCur || (this._netCur = new Map());
+    cur.clear();
+    const vis = [];
     for (const p of this.players.values()) {
       if (!p.alive || p.phase === 'blimp') continue;
       const it = this.currentItem(p);
       const w = !it ? 0 : it.c ? 255 : WCODES.indexOf(it.w) * 8 + (it.r || 0);
       const flags = (p.reloadUntil > t ? 1 : 0) | (p.useUntil > t ? 2 : 0);
-      ps.push([p.id, r2(p.x), r2(p.y), r2(p.z), r3(p.yaw), r3(p.pitch), PHASE_CODE[p.phase], w, p.emote, flags]);
+      const q = p._nq || (p._nq = new Int32Array(NFIELDS));
+      quantize(p.x, p.y, p.z, p.yaw, p.pitch, PHASE_CODE[p.phase], w, p.emote, flags, q);
+      cur.set(p.id, q);
+      vis.push(p);
     }
-    const tick = Math.round(t * TICK_RATE);
-    const base = { t: 's', tm: r3(t), ps, ev: this.events, al: this.alive.length };
-    if (tick % 4 === 0) base.zn = this.zoneMsg();
-    const head = JSON.stringify(base).slice(0, -1);
+    // events: shots and tackle swings only go to players close enough to see/hear them
+    const glob = [], local = [];
+    for (const e of this.events) {
+      if (e[0] === 'sh') local.push({ e, x: e[3], z: e[5], r: 320 });
+      else if (e[0] === 'sw') { const q = this.players.get(e[1]); if (q) local.push({ e, x: q.x, z: q.z, r: 160 }); }
+      else glob.push(e);
+    }
     this.events = [];
+    let head = '{"t":"s","tm":' + r3(t) + ',"al":' + this.alive.length;
+    if (tick % 4 === 0) head += ',"zn":' + JSON.stringify(this.zoneMsg());
+    const globStr = glob.map((e) => JSON.stringify(e));
+    const localStr = local.map((l) => JSON.stringify(l.e));
+    const parts = [], gone = [], evs = [];
+    const tmp = new Int32Array(NFIELDS);
     for (const p of this.players.values()) {
       if (p.bot) { p.pev.length = 0; continue; }
       if (!p.ws || p.ws.readyState !== 1) continue;
+      const net = p.net || (p.net = { known: new Map(), band: new Map() });
+      // where this client is looking from: itself, or the player it spectates
+      let ref = p;
+      if (!p.alive && p.specId) { const sp = this.players.get(p.specId); if (sp && sp.alive) ref = sp; }
+      parts.length = 0; gone.length = 0;
+      for (const id of net.known.keys()) if (!cur.has(id)) { net.known.delete(id); net.band.delete(id); gone.push(id); }
+      for (const q of vis) {
+        if (q === p) continue;
+        const prevEvery = net.band.get(q.id) || 0;
+        const dx = q.x - ref.x, dz = q.z - ref.z;
+        const every = q.team === p.team ? 1 : bandFor(Math.sqrt(dx * dx + dz * dz), prevEvery);
+        const last = net.known.get(q.id);
+        // due on its staggered slot; sent right away when new or when it moved to a finer band
+        if (last && every >= prevEvery && (tick + q.id) % every !== 0) continue;
+        net.band.set(q.id, every);
+        tmp.set(cur.get(q.id)); tmp[9] = every;
+        // a full keyframe now and then (staggered) so a client can never drift
+        const key = !!last && (tick + q.id * 7) % KEY_TICKS < every;
+        const upd = encodeEntry(q.id, tmp, last || null, parts, key);
+        if (upd && !last) net.known.set(q.id, upd);
+      }
+      evs.length = 0;
+      for (const s of globStr) evs.push(s);
+      for (let i = 0; i < local.length; i++) {
+        const l = local[i];
+        if (Math.abs(l.x - ref.x) < l.r && Math.abs(l.z - ref.z) < l.r) evs.push(localStr[i]);
+      }
+      let msg = head + ',"ps":[' + parts.join(',') + '],"ev":[' + evs.join(',') + ']';
+      if (gone.length) msg += ',"pg":[' + gone.join(',') + ']';
       const me = {
         hp: Math.max(0, Math.round(p.hp)), pad: Math.round(p.pad), inv: p.inv, slot: p.slot, mats: p.mats, k: p.kills,
         ph: p.phase, rl: p.reloadUntil > t ? r2(p.reloadUntil - t) : 0, us: p.useUntil > t ? r2(p.useUntil - t) : 0,
       };
       if (p.phase === 'blimp') { me.x = r2(p.x); me.y = r2(p.y); me.z = r2(p.z); }
       const meStr = JSON.stringify(me);
-      let extra = '';
-      if (meStr !== p.lastMe || tick % 10 === 0) { extra += ',"me":' + meStr; p.lastMe = meStr; }
-      if (p.pev.length) { extra += ',"pe":' + JSON.stringify(p.pev); p.pev = []; }
-      p.ws.send(head + extra + '}');
+      if (meStr !== p.lastMe || tick % 10 === 0) { msg += ',"me":' + meStr; p.lastMe = meStr; }
+      if (p.pev.length) { msg += ',"pe":' + JSON.stringify(p.pev); p.pev = []; }
+      p.ws.send(msg + '}');
     }
+  }
+
+  // Extra delay (s) the client `p` draws player `q` with (far players arrive less often);
+  // hit detection rewinds `q` by the same amount so lag compensation matches what was on screen.
+  netDelay(p, q) {
+    const every = p.net && p.net.band.get(q.id);
+    return every ? extraDelay(every, TICK_RATE) : 0;
   }
 
   close() {

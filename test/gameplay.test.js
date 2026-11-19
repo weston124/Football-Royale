@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { World, stepFalling, stepPlayer } from '../shared/physics.js';
 import { generateMap } from '../shared/map.js';
+import { createSnapshotDecoder } from '../shared/netcodec.js';
 
 const PORT = Number(process.env.TEST_PORT) || 3999;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,6 +22,7 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
     const world = new World();
     for (const b of map.boxes) world.add({ min: b.min.slice(), max: b.max.slice() });
     const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+    const decode = createSnapshotDecoder();
     const st = { me: null, loot: new Map(), ents: new Map(), pieces: 0, hits: 0, corr: null, started: null };
     ws.on('message', (raw) => {
       const m = JSON.parse(raw);
@@ -29,7 +31,8 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
       if (m.t === 'start') { st.started = m; for (const l of m.loot) st.loot.set(l[0], l); }
       if (m.t !== 's') return;
       if (m.me) st.me = m.me;
-      for (const p of m.ps) st.ents.set(p[0], p);
+      for (const e of decode(m)) st.ents.set(e.id, [e.id, e.x, e.y, e.z, e.yaw, e.pitch, e.ph]);
+      for (const id of m.pg || []) st.ents.delete(id);
       for (const e of m.ev) {
         if (e[0] === 'l+') st.loot.set(e[1], e.slice(1));
         if (e[0] === 'l-') st.loot.delete(e[1]);
