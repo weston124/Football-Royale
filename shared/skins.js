@@ -10,6 +10,18 @@ export const SKIN_PRESETS = [
   // style: extra uniform details drawn by the game (lightning bolts, towel, pads, crowns...)
   { id: 'thunder', team: 'Royale Thunder', jersey: '#1c2030', accent: '#d42a2a', helmet: '#1c2030', stripe: '#d42a2a', mask: '#d9d9d9', pants: '#1c2030',
     style: { bolts: true, towel: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, whiteNumbers: true, cleats: '#d42a2a' } },
+  // ---------- the football crew ----------
+  { id: 'pylon',    team: 'Pylon Prince',     jersey: '#ff6b1a', accent: '#ffffff', helmet: '#ff6b1a', stripe: '#ffffff', mask: '#ffffff', pants: '#ffffff', body: 'm' },
+  { id: 'tank',     team: 'Two-Point Tank',   jersey: '#2e5a2e', accent: '#f2c14e', helmet: '#f2c14e', stripe: '#2e5a2e', mask: '#2e5a2e', pants: '#f2c14e', body: 'm' },
+  { id: 'hailmary', team: 'Hail Mary Hero',   jersey: '#f4f4f4', accent: '#2050c8', helmet: '#2050c8', stripe: '#f4f4f4', mask: '#f4f4f4', pants: '#2050c8', body: 'm' },
+  { id: 'storm',    team: 'Sideline Storm',   jersey: '#6a2bd1', accent: '#3fe0d0', helmet: '#6a2bd1', stripe: '#3fe0d0', mask: '#ffffff', pants: '#ffffff', body: 'f' },
+  { id: 'redzone',  team: 'Red Zone Queen',   jersey: '#c8102e', accent: '#f4f4f4', helmet: '#111111', stripe: '#c8102e', mask: '#c8102e', pants: '#111111', body: 'f' },
+  { id: 'picksix',  team: 'Pick-Six Phantom', jersey: '#101820', accent: '#00e5ff', helmet: '#101820', stripe: '#00e5ff', mask: '#00e5ff', pants: '#101820', body: 'f',
+    style: { bolts: true, towel: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, whiteNumbers: true, cleats: '#00e5ff' } },
+  { id: 'zebra',    team: 'Zebra Captain',    jersey: '#f4f4f4', accent: '#111111', helmet: '#f4f4f4', stripe: '#111111', mask: '#111111', pants: '#f0f0f0', body: 'm',
+    style: { referee: true, cleats: '#151515' } },
+  { id: 'sergeant', team: 'Sideline Sergeant', jersey: '#f4f4f4', accent: '#111111', helmet: '#111111', stripe: '#f4f4f4', mask: '#111111', pants: '#151515', body: 'm',
+    style: { referee: true, cleats: '#151515' } },
   { id: 'llamas',   team: 'Lava Llamas',       jersey: '#e2471f', accent: '#ffd23f', helmet: '#e2471f', stripe: '#ffd23f', mask: '#222222', pants: '#ffffff' },
   { id: 'narwhals', team: 'Neon Narwhals',     jersey: '#14d1c4', accent: '#ff3fa4', helmet: '#1d1f3a', stripe: '#14d1c4', mask: '#ff3fa4', pants: '#1d1f3a' },
   { id: 'coyotes',  team: 'Cosmic Coyotes',    jersey: '#4b2a8c', accent: '#f2c14e', helmet: '#4b2a8c', stripe: '#f2c14e', mask: '#c0c0c0', pants: '#f2c14e' },
@@ -77,6 +89,7 @@ export function sanitizeSkin(s, profile) {
   out.eyes = EYE_COLORS.includes(s.eyes) ? s.eyes : EYE_COLORS[2];
   out.smile = s.smile !== false;
   out.helmetOn = s.helmetOn !== false; // players choose helmet on or off
+  out.body = s.body === 'f' || s.body === 'm' ? s.body : (p.body || 'm');
   out.horns = p.horns || null;
   // every outfit gets the full game-day look; Royale Thunder also has white numbers
   out.style = p.style || { bolts: true, towel: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, cleats: p.accent };

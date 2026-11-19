@@ -116,6 +116,7 @@ function refreshPreview() {
   $('c-jersey').value = profile.skin.jersey; $('c-accent').value = profile.skin.accent;
   $('c-helmet').value = profile.skin.helmet; $('c-pants').value = profile.skin.pants; $('c-number').value = profile.skin.number;
   for (const [id, key] of [['tones', 'tone'], ['hairs', 'hair'], ['eyes', 'eyes']]) [...$(id).children].forEach((b) => b.classList.toggle('sel', b.dataset.t === profile.skin[key]));
+  [...$('body-pick').children].forEach((b) => b.classList.toggle('on', b.dataset.v === profile.skin.body));
   $('hair-style').value = profile.skin.hairStyle; $('smile').checked = profile.skin.smile !== false; $('helmet-on').checked = profile.skin.helmetOn !== false;
 }
 function previewLoop(ts) {
@@ -141,7 +142,7 @@ function renderSkins() {
     const ok = unlocked(p);
     const req = p.unlock ? (p.unlock.wins ? `${p.unlock.wins} win${p.unlock.wins > 1 ? 's' : ''}` : `${p.unlock.kills} elims`) : '';
     return `<button data-id="${p.id}" class="${profile.skin.preset === p.id ? 'sel' : ''} ${ok ? '' : 'locked'}" title="${esc(p.team)}${ok ? '' : ' — unlock with ' + req}"
-      style="background:linear-gradient(135deg, ${p.jersey} 0 55%, ${p.accent} 55% 70%, ${p.helmet} 70%)">${ok ? '' : `<span class="lock">🔒</span>`}<span style="position:absolute;bottom:2px;left:0;right:0">${esc(p.team.split(' ')[1] || p.team)}</span></button>`;
+      style="background:linear-gradient(135deg, ${p.jersey} 0 55%, ${p.accent} 55% 70%, ${p.helmet} 70%)">${ok ? '' : `<span class="lock">🔒</span>`}<span style="position:absolute;bottom:2px;left:0;right:0">${esc(p.team.split(' ').slice(-1)[0])}</span></button>`;
   }).join('');
 }
 $('skins').onclick = (e) => {
@@ -196,6 +197,10 @@ const swatchRow = (id, list, key) => {
 swatchRow('tones', SKIN_TONES, 'tone');
 swatchRow('hairs', HAIR_COLORS, 'hair');
 swatchRow('eyes', EYE_COLORS, 'eyes');
+$('body-pick').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  profile.skin.body = b.dataset.v; saveProfile(); refreshPreview();
+};
 $('hair-style').onchange = () => { profile.skin.hairStyle = $('hair-style').value; saveProfile(); refreshPreview(); };
 $('smile').onchange = () => { profile.skin.smile = $('smile').checked; saveProfile(); refreshPreview(); };
 $('helmet-on').onchange = () => { profile.skin.helmetOn = $('helmet-on').checked; saveProfile(); refreshPreview(); };

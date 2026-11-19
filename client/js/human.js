@@ -18,10 +18,24 @@ let LEGS = null;          // thigh/knee fronts for pads    // loose jersey shell
 
 const SKIN = 0, JERSEY = 1, PANTS = 2, SOCK = 3, SHOE = 4, GLOVE = 5, ACCENT = 6, BROW = 7, LIPS = 8, EYEBLACK = 9, TAPE = 10, LASH = 11, PSTRIPE = 12;
 
+// Two bodies: 'm' (human.*) and 'f' (human_f.*). Each body keeps its own measurements.
+const BODIES = {};
+function useBody(key) {
+  const b = BODIES[key] || BODIES.m;
+  ({ DATA, BONE_INV, CHEST, FEET, WAIST, JERSEY_GEO, HEAD, MOUTH, LEGS } = b);
+  return b;
+}
 export async function loadHuman(base = '/assets/') {
+  await loadBody(base, 'human', 'm');
+  try { await loadBody(base, 'human_f', 'f'); } catch (e) { console.warn('female body missing', e); }
+  useBody('m');
+  return true;
+}
+async function loadBody(base, name, key) {
+  BONE_INV = null;
   const [info, bin] = await Promise.all([
-    fetch(base + 'human.json').then((r) => r.json()),
-    fetch(base + 'human.bin').then((r) => r.arrayBuffer()),
+    fetch(base + name + '.json').then((r) => r.json()),
+    fetch(base + name + '.bin').then((r) => r.arrayBuffer()),
   ]);
   const n = info.vertexCount, o = info.offsets;
   const attrs = {
@@ -117,6 +131,7 @@ export async function loadHuman(base = '/assets/') {
     }
     FEET[side] = { min: mn, max: mx };
   }
+  BODIES[key] = { DATA, BONE_INV, CHEST, FEET, WAIST, JERSEY_GEO, HEAD, MOUTH, LEGS };
   return true;
 }
 export const humanReady = () => !!DATA;
@@ -272,6 +287,7 @@ function buildHair(skin) {
 
 // Returns { mesh, bones: {name: Bone}, attach(boneName, obj, worldPos), restWorld(name) }
 export function createHuman(skin) {
+  const body = useBody(skin.body === 'f' ? 'f' : 'm');
   const { info, attrs } = DATA;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', attrs.position);
@@ -290,6 +306,11 @@ export function createHuman(skin) {
     if (reg[i] === SOCK && st.crewSocks) c = y > 0.4 ? cA : y > 0.27 ? (y > 0.315 && y < 0.34 ? cA : cJ) : cW;   // red band, navy with stripe, white crew socks
     if (reg[i] === SKIN && st.armSleeve && x < -0.25 && y < 1.25 && y > 0.75) c = cJ;                          // forearm sleeve
     if (reg[i] === TAPE && st.armSleeve) c = x > 0 ? cA : cW;
+    if (st.referee) {
+      if (reg[i] === GLOVE || reg[i] === TAPE) c = cmap[SKIN];
+      if (reg[i] === SOCK) c = new THREE.Color('#151515');
+      if (reg[i] === PSTRIPE) c = cmap[PANTS];
+    }
     col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -309,6 +330,7 @@ export function createHuman(skin) {
   mesh.updateMatrixWorld(true);
   if (!BONE_INV) {
     BONE_INV = bones.map((b) => b.matrixWorld.clone().invert());
+    body.BONE_INV = BONE_INV;
   }
   mesh.bind(new THREE.Skeleton(bones, BONE_INV.map((m) => m.clone())), new THREE.Matrix4());
   mesh.frustumCulled = true;
@@ -345,6 +367,11 @@ export function createHuman(skin) {
     for (let i = 0; i < jc.length / 3; i++) {
       const x = jp[i * 3], y = jp[i * 3 + 1], z = jp[i * 3 + 2];
       let col = base;
+      if ((skin.style || {}).referee) {
+        col = Math.floor((x + 1) / 0.034) % 2 ? new THREE.Color('#111111') : white;
+        jc[i * 3] = col.r; jc[i * 3 + 1] = col.g; jc[i * 3 + 2] = col.b;
+        continue;
+      }
       if ((skin.style || {}).bolts) {
         if (Math.abs(x) > 0.12 && y > 1.3) {
           const d = (Math.abs(x) - Math.abs(sh[0])) * 0.6 - (y - sh[1]) * 0.8;   // down the arm
@@ -437,7 +464,7 @@ export function createHuman(skin) {
   const numTex = numberTexture(skin.number ?? 12, skin.accent, st2.whiteNumbers);
   const numMat = new THREE.MeshStandardMaterial({ map: numTex, transparent: true, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -4 });
   owned.push(numMat, numTex);
-  for (const [z, ry] of [[CHEST.front - 0.036, Math.PI], [CHEST.back + 0.036, 0]]) {
+  for (const [z, ry] of (st2.referee ? [[CHEST.back + 0.036, 0]] : [[CHEST.front - 0.036, Math.PI], [CHEST.back + 0.036, 0]])) {
     const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), numMat);
     plate.rotation.y = ry;
     attach('spine02', plate, new THREE.Vector3(0, CHEST.y, z));
@@ -472,7 +499,30 @@ export function createHuman(skin) {
       attach('head', brow, new THREE.Vector3());
     }
   }
-  const setHelmet = (on) => { helmet.visible = on; hair.top.visible = !on; };
+  let cap = null;
+  if (st2.referee) {
+    const capMat = new THREE.MeshStandardMaterial({ color: skin.helmet, roughness: 0.75 }); owned.push(capMat);
+    cap = new THREE.Group();
+    const R = Math.max(HEAD.r[0], HEAD.r[2]) * 1.07;
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 24, 10, 0, Math.PI * 2, 0, 1.3), capMat);
+    dome.scale.set(HEAD.r[0] / R * 1.07, 0.9, 1.0); cap.add(dome);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.85, R * 0.85, 0.008, 24, 1, false, Math.PI * 0.5, Math.PI), smat('#111111', 0.7));
+    brim.position.set(0, R * 0.2, -R * 0.45); brim.rotation.x = 0.12; cap.add(brim);
+    const button = new THREE.Mesh(new THREE.SphereGeometry(0.01, 8, 6), smat('#111111', 0.7)); button.position.y = R * 0.9; cap.add(button);
+    attach('head', cap, new THREE.Vector3(HEAD.c[0], HEAD.c[1] + 0.005, HEAD.c[2] + 0.004));
+    // whistle on a lanyard
+    const cord = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.003, 6, 30), smat('#111111', 0.6));
+    cord.rotation.x = Math.PI / 2 - 0.5; cord.scale.set(1, 1.35, 1);
+    attach('spine01', cord, new THREE.Vector3(0, info.meta.neckY - 0.06, CHEST.front * 0.25));
+    const wh = new THREE.Group();
+    const whb = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.022, 12), smat('#c9ccd1', 0.2, 0.9)); whb.rotation.z = Math.PI / 2; wh.add(whb);
+    const mouthpiece = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.008, 0.024), smat('#c9ccd1', 0.2, 0.9)); mouthpiece.position.set(0, 0.004, -0.01); wh.add(mouthpiece);
+    attach('spine01', wh, new THREE.Vector3(0, info.meta.neckY - 0.17, CHEST.front - 0.03));
+  }
+  const setHelmet = (on) => {
+    if (cap) { helmet.visible = false; hair.top.visible = false; return; }
+    helmet.visible = on; hair.top.visible = !on;
+  };
   setHelmet(skin.helmetOn !== false);
   // weapon hand point
   const hand = new THREE.Group();

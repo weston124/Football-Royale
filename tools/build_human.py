@@ -10,8 +10,10 @@ This script is original to Football Royale; it only reads MakeHuman's CC0 data f
 import json, math, struct, sys, os
 
 SRC, OUT = sys.argv[1], sys.argv[2]
-HEIGHT = 1.86        # meters
-MUSCLE = 1.0         # full "max muscle" athletic body target
+GENDER = sys.argv[3] if len(sys.argv) > 3 else 'male'   # 'male' or 'female'
+NAME = 'human' if GENDER == 'male' else 'human_f'
+HEIGHT = 1.86 if GENDER == 'male' else 1.76   # meters
+MUSCLE = 1.0 if GENDER == 'male' else 0.7   # athletic "max muscle" body target
 
 KEEP = ['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spine01', 'neck01', 'neck02', 'neck03', 'head']
 for s in ('L', 'R'):
@@ -40,12 +42,13 @@ for line in open(os.path.join(SRC, '3dobjs/base.obj')):
         eye_idx['L' if group == 'helper-l-eye' else 'R'].update(int(t.split('/')[0]) - 1 for t in line.split()[1:])
 
 # body shape: young adult male (average of three ethnicities, like MakeHuman's default), athletic, ideal proportions
+G = GENDER
 TARGETS = [
-    ('macrodetails/caucasian-male-young.target', 1 / 3),
-    ('macrodetails/african-male-young.target', 1 / 3),
-    ('macrodetails/asian-male-young.target', 1 / 3),
-    ('macrodetails/universal-male-young-maxmuscle-averageweight.target', MUSCLE),
-    ('macrodetails/proportions/male-young-averagemuscle-averageweight-idealproportions.target', 1.0),
+    (f'macrodetails/caucasian-{G}-young.target', 1 / 3),
+    (f'macrodetails/african-{G}-young.target', 1 / 3),
+    (f'macrodetails/asian-{G}-young.target', 1 / 3),
+    (f'macrodetails/universal-{G}-young-maxmuscle-averageweight.target', MUSCLE),
+    (f'macrodetails/proportions/{G}-young-averagemuscle-averageweight-idealproportions.target', 1.0),
 ]
 for path, wt in TARGETS:
     for line in open(os.path.join(SRC, 'targets', path)):
@@ -255,8 +258,8 @@ info = {
              'shoulder': J[bones['upperarm01.R']['head']], 'height': HEIGHT},
 }
 os.makedirs(OUT, exist_ok=True)
-open(os.path.join(OUT, 'human.bin'), 'wb').write(buf)
-json.dump(info, open(os.path.join(OUT, 'human.json'), 'w'))
+open(os.path.join(OUT, NAME + '.bin'), 'wb').write(buf)
+json.dump(info, open(os.path.join(OUT, NAME + '.json'), 'w'))
 print(f'vertices {n}, triangles {len(idx) // 3}, bones {len(order)}, bin {len(buf) // 1024} KB')
 print('groups', groups_out)
 print('meta', json.dumps(info['meta'])[:400])
