@@ -469,3 +469,6 @@ html.touch-on.in-match #admin-drop { max-height: calc(100vh - 110px); }
   #callout .co-main { font-size: 30px; }
   #callout.win .co-main { font-size: 44px; }
 }
+
+/* coach tips sit above the joystick on touch devices */
+html.touch-on #tip { left: 50%; transform: translateX(-50%); bottom: auto; top: 70px; width: min(420px, 70vw); }

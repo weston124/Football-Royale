@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { World, stepPlayer, stepFalling, raycastWorld, rayPlayer, pieceBox } from '/shared/physics.js';
 import { WEAPONS, CONSUMABLES, itemName, RARITIES } from '/shared/weapons.js';
-import { PLAYER, DROP, BUILD, PICKUP_RANGE, ZONE_PHASES, TICK_RATE } from '/shared/constants.js';
+import { PLAYER, DROP, BUILD, PICKUP_RANGE, ZONE_PHASES, TICK_RATE, ZONE_START_RADIUS } from '/shared/constants.js';
 import { EMOTES } from '/shared/skins.js';
 import { buildWorld } from './world.js';
 import {
@@ -288,7 +288,7 @@ export class Game {
       const b = this.blimp;
       this.yaw = Math.atan2(-b.dx, -b.dz);
       this.hud.centerMsg('🎈 Press <b>SPACE</b> to jump out of the Team Blimp!');
-      this.hud.tip('blimp', 'The yellow dashed line on your map is the blimp\'s route. Press <kbd>SPACE</kbd> when you\'re over a spot you like to <b>jump out</b>!', 9000);
+      this.hud.tip('blimp', this.tipText('The yellow dashed line on your map is the blimp\'s route. Press <kbd>SPACE</kbd> when you\'re over a spot you like to <b>jump out</b>!', 'The yellow dashed line on your map is the blimp\'s route. Tap <b>JUMP</b> when you\'re over a spot you like to <b>jump out</b>!'), 9000);
     } else {
       this.local.phase = 'ground';
       this.hud.centerMsg(this.kind === 'island' ? '🎉 Welcome to <b>PARTY ISLAND</b>! No fighting, just fun. Press <b>G</b> to dance!' : '');
@@ -381,8 +381,8 @@ export class Game {
     this.hud.lowHealth(me.hp > 0 && me.hp <= 30 && me.ph !== 'dead' ? 1 - me.hp / 30 : 0);
     // coach tips that depend on what I'm carrying
     if (me.ph === 'ground' && this.frame > 0) {
-      if (me.inv.some((it) => it && it.w)) this.hud.tip('shoot', '<b>Left click</b> to shoot, <b>right click</b> to aim. <kbd>R</kbd> reloads, <kbd>1</kbd>-<kbd>6</kbd> or the mouse wheel switches items.', 8000);
-      if (me.inv.some((it) => it && it.c)) this.hud.tip('heal', 'Pick a healing item and <b>left click</b> to use it. Padding 🛡️ gives you an extra blue shield bar.', 7000);
+      if (me.inv.some((it) => it && it.w)) this.hud.tip('shoot', this.tipText('<b>Left click</b> to shoot, <b>right click</b> to aim. <kbd>R</kbd> reloads, <kbd>1</kbd>-<kbd>6</kbd> or the mouse wheel switches items.', 'Hold <b>FIRE</b> to shoot, tap <b>AIM</b> to zoom. <b>RELOAD</b> reloads, tap the item slots at the bottom to switch.'), 8000);
+      if (me.inv.some((it) => it && it.c)) this.hud.tip('heal', this.tipText('Pick a healing item and <b>left click</b> to use it. Padding 🛡️ gives you an extra blue shield bar.', 'Tap a healing item, then hold <b>FIRE</b> to use it. Padding 🛡️ gives you an extra blue shield bar.'), 7000);
     }
     if (me.ph === 'blimp') { this.local.phase = 'blimp'; this.local.x = me.x; this.local.y = me.y; this.local.z = me.z; }
     if (prevPh !== 'ground' && me.ph === 'ground' && this.local.phase !== 'ground') this.local.phase = 'ground';
@@ -479,7 +479,7 @@ export class Game {
         this.local.vx = this.local.vy = this.local.vz = 0;
         if (e[4] === 'fall') {
           this.local.phase = 'fall'; this.hud.centerMsg('');
-          if (!this.hud.tip('chute', 'You\'re skydiving! Steer with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Press <kbd>SPACE</kbd> to <b>open your parachute</b> early (it opens by itself near the ground).', 8000)) this.hud.toast('Press SPACE to open your parachute early', 3000);
+          if (!this.hud.tip('chute', this.tipText('You\'re skydiving! Steer with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Press <kbd>SPACE</kbd> to <b>open your parachute</b> early (it opens by itself near the ground).', 'You\'re skydiving! Steer with the <b>joystick</b>. Tap <b>JUMP</b> to <b>open your parachute</b> early (it opens by itself near the ground).'), 8000)) this.hud.toast(this.tipText('Press SPACE to open your parachute early', 'Tap JUMP to open your parachute early'), 3000);
         }
         break;
       case 'hit': {
@@ -603,7 +603,7 @@ export class Game {
     if (!z || z.r >= 3000 || this.kind === 'island') return;
     if (!this.zoneSeen) {
       this.zoneSeen = true;
-      if (this.local.phase === 'ground') this.hud.tip('storm', '🌀 The <b>Overtime Storm</b> shrinks the field and hurts if you\'re outside it. Stay inside the <b>white circle</b> on your map (<kbd>M</kbd> for the big map).', 9000);
+      if (this.local.phase === 'ground') this.hud.tip('storm', this.tipText('🌀 The <b>Overtime Storm</b> shrinks the field and hurts if you\'re outside it. Stay inside the <b>white circle</b> on your map (<kbd>M</kbd> for the big map).', '🌀 The <b>Overtime Storm</b> shrinks the field and hurts if you\'re outside it. Stay inside the <b>white circle</b> on your map (tap 🗺️ for the big map).'), 9000);
       else this.zoneSeen = false; // wait until I've landed
     }
     const key = `${z.ph}:${z.st}`;
@@ -825,7 +825,7 @@ export class Game {
       const k = Math.min(1, dt * 6);
       d.cx += (z.cx - d.cx) * k; d.cz += (z.cz - d.cz) * k; d.r += (z.r - d.r) * k;
       Object.assign(d, { tx: z.tx, tz: z.tz, tr: z.tr, st: z.st });
-      this.storm.visible = d.r < 3000;
+      this.storm.visible = d.r < ZONE_START_RADIUS - 5; // hidden until the storm starts closing in
       this.storm.position.set(d.cx, 150, d.cz);
       this.storm.scale.set(Math.max(0.1, d.r), 1, Math.max(0.1, d.r));
       this.stormTex.offset.x = t * 0.02;
@@ -952,6 +952,8 @@ export class Game {
       if (t - a.t >= 0.5) { this.hud.fps(`${Math.round(a.n / (t - a.t))} FPS`); a.n = 0; a.t = t; }
     } else if (!$('fps').classList.contains('hidden')) this.hud.fps(null);
   }
+  // coach tips speak touch on phones/tablets
+  tipText(desktop, touch) { return this.touch?.active || document.documentElement.classList.contains('touch-on') ? touch : desktop; }
   footstep(e, s, dist, spd, dt) {
     e.step = (e.step || 0) + dt * Math.min(spd, 10) / 2.4;
     if (e.step < 1) return;
@@ -964,8 +966,8 @@ export class Game {
   onLanded() {
     sfx.land();
     this.addShake(0.4);
-    this.hud.tip('loot', 'Gear glows on the ground. Walk up to it and press <kbd>E</kbd> to <b>pick it up</b>. Golden Equipment Bags hold the best stuff!', 8000);
-    if (this.mode === 'build') this.hud.tip('build', 'BUILD MODE: <kbd>Z</kbd> wall · <kbd>X</kbd> floor · <kbd>C</kbd> ramp, then <b>left click</b> to place. Tackle trees, cars and walls (slot <kbd>1</kbd>) to collect Turf 🟩.', 9000);
+    this.hud.tip('loot', this.tipText('Gear glows on the ground. Walk up to it and press <kbd>E</kbd> to <b>pick it up</b>. Golden Equipment Bags hold the best stuff!', 'Gear glows on the ground. Walk up to it and tap <b>USE</b> to <b>pick it up</b>. Golden Equipment Bags hold the best stuff!'), 8000);
+    if (this.mode === 'build') this.hud.tip('build', this.tipText('BUILD MODE: <kbd>Z</kbd> wall · <kbd>X</kbd> floor · <kbd>C</kbd> ramp, then <b>left click</b> to place. Tackle trees, cars and walls (slot <kbd>1</kbd>) to collect Turf 🟩.', 'BUILD MODE: tap <b>WALL</b>, <b>FLOOR</b> or <b>RAMP</b>, then <b>FIRE</b> to place. Tackle trees, cars and walls (slot 1) to collect Turf 🟩.'), 9000);
   }
 
   spreadNow() {
