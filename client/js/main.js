@@ -11,6 +11,7 @@ import { Hud } from './hud.js';
 import { Game } from './game.js';
 import { createMenuScene } from './menuScene.js';
 import { initAudio, sfx, startPartyMusic, setVolumes, startMenuMusic, stopMenuMusic } from './audio.js';
+import { IS_TOUCH, initTouchEnvironment, pixelRatioFor } from './touch.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,8 +66,8 @@ const net = {
 // ---------- shared things ----------
 const map = generateMap();
 const hud = new Hud(drawMapImage(map, 1000), map.pois);
-const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: !IS_TOUCH, powerPreference: 'high-performance' });
+renderer.setPixelRatio(pixelRatioFor(1.5)); // phones/tablets render fewer pixels
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
@@ -115,7 +116,7 @@ $('music-toggle').onclick = () => { settings.menuMusic = !settings.menuMusic; sa
 
 // ---------- skin preview ----------
 const pr = new THREE.WebGLRenderer({ canvas: $('preview'), antialias: true, alpha: true });
-pr.setPixelRatio(Math.min(devicePixelRatio, 2));
+pr.setPixelRatio(pixelRatioFor(2));
 pr.setSize(360, 380, false);
 pr.outputColorSpace = THREE.SRGBColorSpace;
 const pScene = new THREE.Scene();
@@ -124,7 +125,7 @@ pScene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
 const rim = new THREE.DirectionalLight(0x9fd0ff, 2.2); rim.position.set(-3, 3, -3); pScene.add(rim);
 const pl = new THREE.DirectionalLight(0xfff4e6, 2.4); pl.position.set(2, 4, 3); pScene.add(pl);
 pr.shadowMap.enabled = true; pr.shadowMap.type = THREE.PCFSoftShadowMap;
-pl.castShadow = true; pl.shadow.mapSize.set(2048, 2048); pl.shadow.bias = -0.0004; pl.shadow.normalBias = 0.02;
+pl.castShadow = true; pl.shadow.mapSize.set(IS_TOUCH ? 512 : 2048, IS_TOUCH ? 512 : 2048); pl.shadow.bias = -0.0004; pl.shadow.normalBias = 0.02;
 Object.assign(pl.shadow.camera, { left: -1.2, right: 1.2, top: 2.2, bottom: -0.2, near: 0.5, far: 10 });
 const floorShadow = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.ShadowMaterial({ opacity: 0.35 }));
 floorShadow.rotation.x = -Math.PI / 2; floorShadow.receiveShadow = true; pScene.add(floorShadow);
@@ -700,7 +701,7 @@ syncSettingsUI();
 window.__fr = { get game() { return game; } };
 
 // ---------- start ----------
-if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) $('touch-warning').classList.remove('hidden');
+initTouchEnvironment(); // phones & tablets: touch CSS, no pinch-zoom (on-screen controls start with each match)
 renderStats();
 refreshPreview();
 showScreen('loading');
