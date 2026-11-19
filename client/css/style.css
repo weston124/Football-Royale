@@ -242,7 +242,7 @@ html.touch-on #ammo { bottom: 78px; font-size: 20px; }
 html.touch-on #bars { left: calc(12px + env(safe-area-inset-left, 0px)); top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; width: 190px; gap: 4px; }
 html.touch-on .bar { height: 18px; }
 html.touch-on .bar span { font-size: 12px; line-height: 14px; }
-html.touch-on #killfeed { top: 62px; left: calc(12px + env(safe-area-inset-left, 0px)); font-size: 11px; max-width: 40vw; }
+html.touch-on #killfeed { top: 96px; left: calc(12px + env(safe-area-inset-left, 0px)); font-size: 11px; max-width: 40vw; }
 html.touch-on #topleft { top: 8px; right: calc(8px + env(safe-area-inset-right, 0px)); }
 html.touch-on #minimap { width: 120px; height: 120px; border-width: 2px; }
 html.touch-on #zoneinfo { font-size: 11px; max-width: 200px; margin-left: auto; }
@@ -280,7 +280,7 @@ html.touch-on #scoreboard { min-width: 0; width: min(420px, 90vw); max-height: 8
   html.touch-on #bars { width: 150px; top: calc(6px + env(safe-area-inset-top, 0px)); }
   html.touch-on .bar { height: 15px; border-width: 1px; }
   html.touch-on .bar span { font-size: 11px; line-height: 13px; }
-  html.touch-on #killfeed { top: 46px; font-size: 10px; }
+  html.touch-on #killfeed { top: 74px; font-size: 10px; }
   html.touch-on #minimap { width: 92px; height: 92px; }
   html.touch-on #zoneinfo { font-size: 10px; max-width: 160px; }
   html.touch-on #counters { top: 118px; font-size: 13px; }
@@ -289,7 +289,7 @@ html.touch-on #scoreboard { min-width: 0; width: min(420px, 90vw); max-height: 8
   html.touch-on #toast { font-size: 14px; }
   html.touch-on #emotes { grid-template-columns: repeat(4, minmax(64px, 96px)); gap: 6px; }
   html.touch-on #emotes button { height: 52px; font-size: 11px; padding: 4px; }
-  html.touch-on.in-match #admin-menu { bottom: calc(56px + env(safe-area-inset-bottom, 0px)); }
+  html.touch-on.in-match body #admin-menu { top: calc(44px + env(safe-area-inset-top, 0px)); }
 }
 
 /* ---------- please rotate (portrait during a match) ---------- */
@@ -346,6 +346,6 @@ html.touch-on #scoreboard { min-width: 0; width: min(420px, 90vw); max-height: 8
   #admin-menu { right: auto; left: 50%; transform: translateX(-50%); top: calc(6px + env(safe-area-inset-top, 0px)); align-items: center; }
   #admin-drop { width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 70px); overflow: auto; overscroll-behavior: contain; }
 }
-html.touch-on.in-match #admin-menu { top: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); flex-direction: column-reverse; }
+html.touch-on.in-match #admin-menu { top: calc(62px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); transform: none; align-items: flex-start; }
 html.touch-on.in-match #admin-toggle { padding: 4px 10px; font-size: 12px; }
-html.touch-on.in-match #admin-drop { margin: 0 0 6px; max-height: calc(100vh - 140px); }
+html.touch-on.in-match #admin-drop { max-height: calc(100vh - 110px); }

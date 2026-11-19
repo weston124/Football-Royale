@@ -74,7 +74,7 @@ function bindButtons() {
     if (t) c().looks.set(t.identifier, { x: t.clientX, y: t.clientY }); // drag the fire button to aim
     if (c().g.dead) { c().g.cycleSpectate(); return; }
     c().g.mouse.left = true; c().g.mouse.leftEdge = true;
-  }, () => { c().g.mouse.left = false; });
+  }, () => { c().releaseFireAt = c().frame + 2; }); // a quick tap still fires one shot
   press('t-aim', () => { c().g.mouse.right = !c().g.mouse.right; });
   press('t-jump', () => {
     if (c().g.emoteMenu) return;
@@ -211,7 +211,7 @@ class TouchControls {
     for (const t of e.changedTouches) {
       if (this.stick && t.identifier === this.stick.id) { this.stick = null; this.updateStick(); }
       this.looks.delete(t.identifier);
-      if (t.identifier === this.fireId) { this.fireId = null; this.g.mouse.left = false; }
+      if (t.identifier === this.fireId) { this.fireId = null; this.releaseFireAt = this.frame + 2; }
     }
   }
 
@@ -268,6 +268,7 @@ class TouchControls {
   update(dt, renderT) {
     if (!this.active) return;
     this.frame++;
+    if (this.releaseFireAt && this.frame >= this.releaseFireAt) { this.releaseFireAt = 0; if (this.fireId == null) this.g.mouse.left = false; }
     this.aimAssist(dt, renderT);
     if (this.frame % 4) return;
     const g = this.g, L = g.local, it = g.currentItem();
