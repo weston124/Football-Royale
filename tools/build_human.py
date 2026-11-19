@@ -11,7 +11,7 @@ import json, math, struct, sys, os
 
 SRC, OUT = sys.argv[1], sys.argv[2]
 HEIGHT = 1.86        # meters
-MUSCLE = 0.75        # how much of the "max muscle" body target to apply
+MUSCLE = 1.0         # full "max muscle" athletic body target
 
 KEEP = ['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spine01', 'neck01', 'neck02', 'neck03', 'head']
 for s in ('L', 'R'):

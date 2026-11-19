@@ -196,6 +196,8 @@ function createRealPlayer(skin) {
       B['lowerarm01.' + s].rotation.set(P['elbow' + l].rotation.x, 0, 0);
     }
   };
+  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); // only matters where shadows are turned on
+  P.shadow.castShadow = false; P.shadow.receiveShadow = false;
   root.userData = { parts: P, walk: 0, held: null, heldCode: -1, rig, human: h, setHelmet: h.setHelmet };
   rig();
   return root;

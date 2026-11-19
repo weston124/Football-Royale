@@ -126,7 +126,8 @@ function smat(color, rough = 0.6, metal = 0, extra = {}) {
 
 function buildHelmet(skin) {
   const g = new THREE.Group();
-  const hm = new THREE.MeshStandardMaterial({ color: skin.helmet, roughness: 0.18, metalness: 0.05, side: THREE.DoubleSide });
+  // real helmets have a glossy clear-coat shell
+  const hm = new THREE.MeshPhysicalMaterial({ color: skin.helmet, roughness: 0.32, metalness: 0.0, clearcoat: 1.0, clearcoatRoughness: 0.06, side: THREE.DoubleSide });
   const R = 0.15;
   const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 32, 16, 0, Math.PI * 2, 0, 1.2), hm);
   dome.scale.set(0.93, 1.0, 1.12); g.add(dome);
@@ -141,16 +142,23 @@ function buildHelmet(skin) {
     const clip = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), smat(skin.mask, 0.35, 0.4));
     clip.position.set(sx * 0.133, -0.02, -0.04); clip.scale.set(0.4, 1, 1); g.add(clip);
   }
-  const mm = smat(skin.mask, 0.35, 0.45);
-  for (const [y, r] of [[-0.035, 0.15], [-0.075, 0.145], [-0.112, 0.125]]) {
-    const bar = new THREE.Mesh(new THREE.TorusGeometry(r, 0.0065, 8, 24, Math.PI * 0.62), mm);
-    bar.rotation.x = Math.PI / 2; bar.rotation.z = Math.PI + Math.PI * 0.19; bar.position.set(0, y, 0.008);
+  // face mask cage: thick coated bars like a real lineman/receiver mask
+  const mm = new THREE.MeshPhysicalMaterial({ color: skin.mask, roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.2 });
+  for (const [y, r, arc] of [[-0.03, 0.152, 0.6], [-0.062, 0.15, 0.62], [-0.094, 0.143, 0.64], [-0.124, 0.122, 0.56]]) {
+    const bar = new THREE.Mesh(new THREE.TorusGeometry(r, 0.0085, 8, 28, Math.PI * arc), mm);
+    bar.rotation.x = Math.PI / 2; bar.rotation.z = Math.PI + Math.PI * (1 - arc) / 2; bar.position.set(0, y, 0.008);
     g.add(bar);
   }
-  for (const sx of [-0.037, 0.037]) {
-    const v = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.095, 8), mm);
-    v.position.set(sx, -0.075, -0.142); v.rotation.x = -0.15; g.add(v);
+  for (const sx of [-0.05, 0, 0.05]) {
+    const v = new THREE.Mesh(new THREE.CylinderGeometry(0.0075, 0.0075, 0.11, 8), mm);
+    v.position.set(sx, -0.075, -0.14 + Math.abs(sx) * 0.25); v.rotation.x = -0.18; g.add(v);
   }
+  for (const sx of [-1, 1]) { // side bars that hook to the helmet
+    const sb = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.075, 8), mm);
+    sb.position.set(sx * 0.118, -0.06, -0.075); sb.rotation.set(0.6, 0, sx * 0.35); g.add(sb);
+  }
+  const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.016, 0.014), smat('#222222', 0.6)); // nose bumper
+  bumper.position.set(0, -0.018, -0.155); g.add(bumper);
   const visor = new THREE.Mesh(new THREE.SphereGeometry(R * 0.97, 24, 8, Math.PI * 1.5 - 0.85, 1.7, 1.28, 0.42),
     new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 0.05, metalness: 0.7, transparent: true, opacity: 0.72, side: THREE.DoubleSide }));
   visor.scale.set(0.93, 1.0, 1.12); g.add(visor);
@@ -170,6 +178,7 @@ function buildHelmet(skin) {
     }
   }
   g.userData.disposeMat = hm;
+  g.userData.disposeMask = mm;
   return g;
 }
 
@@ -295,7 +304,7 @@ export function createHuman(skin) {
   const owned = [];
   const meta = info.meta;
   const eyeY = meta.eyes.L.c[1], eyeZ = meta.eyes.L.c[2];
-  const helmet = buildHelmet(skin); owned.push(helmet.userData.disposeMat);
+  const helmet = buildHelmet(skin); owned.push(helmet.userData.disposeMat, helmet.userData.disposeMask);
   attach('head', helmet, new THREE.Vector3(0, eyeY + 0.03, eyeZ + 0.105));
   const iris = skin.eyes || IRIS[(skin.number || 0) % IRIS.length];
   for (const s of ['L', 'R']) attach('head', buildEye(meta.eyes[s].r * 0.95, iris), new THREE.Vector3(...meta.eyes[s].c));
