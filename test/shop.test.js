@@ -27,10 +27,10 @@ test('buying spends Ball Bucks and unlocks the item', async () => {
 test('you cannot wear or emote with items you do not own', () => {
   const none = { owned: [], stats: {} };
   const own = { owned: ['lh_golden', 'emote7'], stats: {} };
-  assert.equal(sanitizeSkin({ preset: 'lh_golden' }, none).preset, 'llamas');
+  assert.equal(sanitizeSkin({ preset: 'lh_golden' }, none).preset, 'thunder');
   assert.equal(sanitizeSkin({ preset: 'lh_golden' }, own).preset, 'lh_golden');
   assert.ok(sanitizeSkin({ preset: 'lh_golden' }, own).horns);
-  assert.equal(sanitizeSkin({ preset: 'pirates' }, none).preset, 'llamas', 'win-locked skin');
+  assert.equal(sanitizeSkin({ preset: 'pirates' }, none).preset, 'thunder', 'win-locked skin');
   assert.ok(!canUseEmote(7, none)); assert.ok(canUseEmote(7, own)); assert.ok(canUseEmote(1, none));
 });
 
