@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Football Royale</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
   <link rel="stylesheet" href="css/style.css">
@@ -105,7 +105,6 @@
       <h3>📰 Updates</h3>
       <div id="news"></div>
     </div>
-    <div id="touch-warning" class="error hidden">Football Royale needs a keyboard and mouse (computer or laptop).</div>
   </div>
 
   <!-- ===== SIGN IN ===== -->
@@ -175,6 +174,28 @@
     <div id="scoreboard" class="hidden"></div>
     <div id="dmgnums"></div>
   </div>
+
+  <!-- ===== TOUCH CONTROLS (phones & tablets; see js/touch.js, only shown when html.touch-on) ===== -->
+  <div id="touch">
+    <div id="t-stick"><div id="t-knob"></div></div>
+    <div class="t-top">
+      <button id="t-pause" class="t-btn t-small" aria-label="Pause">⏸</button>
+      <button id="t-map" class="t-btn t-small" aria-label="Map">🗺️</button>
+      <button id="t-score" class="t-btn t-small" aria-label="Scoreboard">🏆</button>
+      <button id="t-emote" class="t-btn t-small" aria-label="Emotes">💃</button>
+    </div>
+    <div class="t-build">
+      <button id="t-wall" class="t-btn">WALL</button>
+      <button id="t-floor" class="t-btn">FLOOR</button>
+      <button id="t-ramp" class="t-btn">RAMP</button>
+    </div>
+    <button id="t-use" class="t-btn">✋ USE</button>
+    <button id="t-reload" class="t-btn">⟳<small>RELOAD</small></button>
+    <button id="t-aim" class="t-btn">🎯<small>AIM</small></button>
+    <button id="t-jump" class="t-btn">⬆<small>JUMP</small></button>
+    <button id="t-fire" class="t-btn" aria-label="Fire">🔥</button>
+  </div>
+  <div id="t-rotate"><div>📱↻<br>Turn your device sideways to play!</div></div>
 
   <div id="pause" class="screen hidden">
     <div class="panel">

@@ -10,6 +10,7 @@ import {
   createChest, createBlimp, createFootball, turfMaterial, mat, WCODES, createHand, setupEnvironment,
 } from './models.js';
 import { sfx } from './audio.js';
+import { createTouchControls } from './touch.js';
 
 const $ = (id) => document.getElementById(id);
 const PH = ['ground', 'blimp', 'fall', 'glide', 'dead'];
@@ -54,6 +55,7 @@ export class Game {
     this.ghost.visible = false; this.scene.add(this.ghost);
     this.pieceMat = turfMaterial();
     this.bindInput();
+    this.touch = createTouchControls(this); // phones/tablets: on-screen controls (null on desktop)
     this.running = true;
     this.lastFrame = nowS();
     this.loop = this.loop.bind(this);
@@ -123,6 +125,7 @@ export class Game {
       },
       mousedown: (e) => {
         if (e.target && e.target.closest && e.target.closest('#admin-menu, #party-pop, #shop')) return;
+        if (this.touch?.active) return;
         if (document.pointerLockElement !== c) { if (!this.dead && !this.emoteMenu) c.requestPointerLock(); return; }
         if (e.button === 0) { this.mouse.left = true; this.mouse.leftEdge = true; if (this.dead) this.cycleSpectate(); }
         if (e.button === 2) this.mouse.right = true;
@@ -136,7 +139,7 @@ export class Game {
       contextmenu: (e) => e.preventDefault(),
       lockchange: () => {
         const locked = document.pointerLockElement === c;
-        $('pause').classList.toggle('hidden', locked || this.dead || this.ended || this.emoteMenu);
+        $('pause').classList.toggle('hidden', locked || this.touch?.active || this.dead || this.ended || this.emoteMenu);
         if (!locked) { this.keys.clear(); this.mouse.left = this.mouse.right = false; }
       },
     };
@@ -145,7 +148,7 @@ export class Game {
     addEventListener('mouseup', this.h.mouseup); addEventListener('wheel', this.h.wheel, { passive: true });
     addEventListener('contextmenu', this.h.contextmenu);
     document.addEventListener('pointerlockchange', this.h.lockchange);
-    $('resume').onclick = () => c.requestPointerLock();
+    $('resume').onclick = () => (this.touch?.active ? $('pause').classList.add('hidden') : c.requestPointerLock());
     $('quit').onclick = () => this.leave();
     $('spectate').onclick = () => { $('dead').classList.add('hidden'); this.cycleSpectate(); };
     $('dead-leave').onclick = () => this.leave();
@@ -196,7 +199,7 @@ export class Game {
     this.emoteMenu = on;
     $('emotes').classList.toggle('hidden', !on);
     if (on) document.exitPointerLock();
-    else this.renderer.domElement.requestPointerLock();
+    else if (!this.touch?.active) this.renderer.domElement.requestPointerLock();
   }
   startEmote(id) {
     this.toggleEmoteMenu(false);
@@ -581,7 +584,7 @@ export class Game {
     const st = this.serverNow();
     const renderT = st - 0.1;
     const L = this.local;
-    const locked = document.pointerLockElement === this.renderer.domElement;
+    const locked = document.pointerLockElement === this.renderer.domElement || !!this.touch?.active;
 
     // --- local movement ---
     if (!this.dead) {
@@ -592,6 +595,7 @@ export class Game {
         input.jump = this.keys.has('Space');
         input.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
       }
+      if (this.touch) this.touch.applyInput(input);
       if (this.emote && (input.f || input.s || input.jump)) this.emote = null;
       if (L.phase === 'ground') {
         let left = dt;
@@ -608,6 +612,7 @@ export class Game {
       }
     }
 
+    if (this.touch) this.touch.update(dt, renderT);
     // --- aiming, shooting, building ---
     const it = this.currentItem();
     const wantAds = this.mouse.right && locked && it && it.w && it.w !== 'tackle' && it.w !== 'whistle' && !this.buildKind && L.phase === 'ground';
@@ -909,6 +914,7 @@ export class Game {
     removeEventListener('contextmenu', this.h.contextmenu); removeEventListener('resize', this.onResize);
     document.removeEventListener('pointerlockchange', this.h.lockchange);
     if (document.pointerLockElement) document.exitPointerLock();
+    if (this.touch) this.touch.destroy();
     for (const id of ['pause', 'dead', 'victory', 'emotes', 'bigmap', 'scoreboard']) $(id).classList.add('hidden');
     this.hud.show(false);
     this.hud.centerMsg(''); this.hud.prompt('');
