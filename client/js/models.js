@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { RARITIES } from '/shared/weapons.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createHuman, humanReady, loadHuman } from './human.js';
+export { loadHuman };
 
 // Soft studio lighting for characters (glossy helmets, smooth skin). Only affects the players' materials.
 const envCache = new WeakMap();
@@ -163,6 +165,58 @@ function makeHorn(side, color) {
 }
 
 export function createPlayer(skin) {
+  return humanReady() ? createRealPlayer(skin) : createCartoonPlayer(skin);
+}
+
+// Realistic skinned athlete; the animation code drives invisible 'proxy' joints that we copy onto the bones.
+function createRealPlayer(skin) {
+  const root = new THREE.Group();
+  const h = createHuman(skin);
+  root.add(h.mesh);
+  const P = {};
+  for (const k of ['body', 'spine', 'head', 'legL', 'legR', 'kneeL', 'kneeR', 'armL', 'armR', 'elbowL', 'elbowR']) P[k] = new THREE.Object3D();
+  P.hand = h.hand;
+  const lasso = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.014, 6, 28), new THREE.MeshStandardMaterial({ color: '#c8a165', roughness: 0.9 }));
+  lasso.rotation.x = Math.PI / 2; lasso.position.y = -0.05; lasso.visible = false;
+  P.hand.add(lasso); P.lasso = lasso;
+  P.chute = makeChute(skin); root.add(P.chute);
+  P.shadow = blobShadow(); root.add(P.shadow);
+  const B = h.bones, rootY = B.root.position.y;
+  const rig = () => {
+    B.root.position.y = rootY + (P.body.position.y - 0.98);
+    B.root.rotation.copy(P.body.rotation);
+    B.spine03.rotation.set(P.spine.rotation.x * 0.5, P.spine.rotation.y * 0.5, 0);
+    B.spine02.rotation.set(P.spine.rotation.x * 0.5, P.spine.rotation.y * 0.5, 0);
+    B.neck02.rotation.set(P.head.rotation.x * 0.4, P.head.rotation.y * 0.4, 0);
+    B.head.rotation.set(P.head.rotation.x * 0.6, P.head.rotation.y * 0.6, 0);
+    for (const [s, l] of [['L', 'L'], ['R', 'R']]) {
+      B['upperleg01.' + s].rotation.set(P['leg' + l].rotation.x, 0, P['leg' + l].rotation.z);
+      B['lowerleg01.' + s].rotation.set(P['knee' + l].rotation.x, 0, 0);
+      B['upperarm01.' + s].rotation.set(P['arm' + l].rotation.x, 0, P['arm' + l].rotation.z);
+      B['lowerarm01.' + s].rotation.set(P['elbow' + l].rotation.x, 0, 0);
+    }
+  };
+  root.userData = { parts: P, walk: 0, held: null, heldCode: -1, rig, human: h };
+  rig();
+  return root;
+}
+
+function makeChute(skin) {
+  const chute = new THREE.Group();
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2.6),
+    new THREE.MeshLambertMaterial({ color: skin.accent, side: THREE.DoubleSide }));
+  canopy.scale.y = 0.55; canopy.position.y = 4.4; chute.add(canopy);
+  const stripe = new THREE.Mesh(new THREE.SphereGeometry(2.62, 16, 8, 0, Math.PI * 2, Math.PI / 4.5, 0.12),
+    new THREE.MeshLambertMaterial({ color: skin.jersey, side: THREE.DoubleSide }));
+  stripe.scale.y = 0.55; stripe.position.y = 4.4; chute.add(stripe);
+  const pts = [];
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; pts.push(new THREE.Vector3(0, 1.6, 0), new THREE.Vector3(Math.cos(a) * 2.1, 4.6, Math.sin(a) * 2.1)); }
+  chute.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffffff })));
+  chute.visible = false;
+  return chute;
+}
+
+function createCartoonPlayer(skin) {
   const root = new THREE.Group();
   const body = new THREE.Group();   // pivot at the hips
   body.position.y = 0.98;
@@ -347,6 +401,15 @@ export function createPlayer(skin) {
 }
 
 export function disposePlayer(m) {
+  const h = m.userData.human;
+  if (h) {
+    for (const x of h.owned) x.dispose();
+    const g = h.mesh.geometry;
+    for (const k of ['position', 'normal', 'skinIndex', 'skinWeight']) g.deleteAttribute(k); // shared, keep on GPU
+    g.setIndex(null); g.dispose();
+    h.mesh.skeleton.dispose();
+    return;
+  }
   m.userData.numTex.dispose();
   for (const x of m.userData.owned || []) x.dispose();
   m.traverse((o) => { if (o.isMesh && o.geometry && !o.geometry.parameters) o.geometry.dispose(); });
@@ -484,6 +547,7 @@ export function animatePlayer(model, s, dt) {
   p.kneeL.rotation.x = kL; p.kneeR.rotation.x = kR;
   p.armL.rotation.set(aL, 0, aLz); p.armR.rotation.set(aR, 0, aRz);
   p.elbowL.rotation.x = eL; p.elbowR.rotation.x = eR;
+  if (u.rig) u.rig();
 }
 
 // ---------- weapons ----------

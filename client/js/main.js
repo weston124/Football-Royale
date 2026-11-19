@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import { generateMap } from '/shared/map.js';
 import { SKIN_PRESETS, SKIN_TONES, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
 import { RARITIES } from '/shared/weapons.js';
-import { createPlayer, animatePlayer, disposePlayer, setupEnvironment } from './models.js';
+import { createPlayer, animatePlayer, disposePlayer, setupEnvironment, loadHuman } from './models.js';
+
+try { await loadHuman(); } catch (e) { console.warn('Realistic model failed to load, using simple players', e); }
 import { drawMapImage } from './world.js';
 import { Hud } from './hud.js';
 import { Game } from './game.js';
