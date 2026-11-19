@@ -57,3 +57,42 @@ array, `ev` events, `zn` zone, `me` private state, `pe` personal events), `end`,
 - Commit with a clear message ending with the two attribution lines:
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and
   `Claude-Session: https://claude.ai/code/session_015QgzwJDeVWyFe7Ny1hQxci`
+
+## Balance notes
+Measured with the headless simulator (`node tools/sim.js [n] [nobuild|build|mixed] [easy|normal|hard] [normal|partyRoyale]`,
+fake clock, 75 players, invariant checks; `BRAIN=bot` drives the human with a kid-like skill profile, `HUMANS=2 SQUAD=1`
+for squads). `tools/wsplay.js` plays a real match over WebSockets; `tools/bench.js` measures tick CPU.
+
+**Storm** (`ZONE_PHASES`): starts 25 s after takeoff, 8 phases, full close at ~11.5 min.
+| phase | wait | shrink | radius | dps |
+|---|---|---|---|---|
+| 1 | 90 | 60 | 360 | 1 |
+| 2 | 60 | 50 | 220 | 1 |
+| 3 | 50 | 45 | 130 | 2 |
+| 4 | 45 | 40 | 75 | 4 |
+| 5 | 35 | 35 | 40 | 6 |
+| 6 | 30 | 30 | 18 | 8 |
+| 7 | 20 | 25 | 6 | 10 |
+| 8 | 15 | 30 | 0 | 14 |
+
+**Weapons** (Common damage × rate = DPS; rarity ×1.00–1.27): Pistol 23×5.5 (126), SMG 14×11 (154, 80 m),
+Rifle 27×5 (135, 200 m), Shotgun 9 × 9 pellets, 1 shot/s (81 point-blank, falls off past 8 m), Sniper 82 (head ×2;
+only a Legendary body shot one-shots 100 hp), Pigskin Cannon 70 splash, Whistle Grenade 70 splash.
+Floor loot weights: pistol 3.2, smg 3, shotgun 3, rifle 2.6, sniper 1, pigskin 0.8. Rarity floor 42/30/17/8/3 %,
+bags 10/30/32/20/8 %. ~245 floor spots + 34 bags for 75 players. Kills by weapon (Normal, 6 matches, 444 kills): SMG 33%,
+rifle 28%, shotgun 26%, pistol 6%, explosives/tackle/sniper 7% — no single gun dominates (median fight 13 m).
+
+**Bots** (`BOT_DIFFICULTY`, `BOT_VS_BOT` in `shared/constants.js`): difficulty only changes how bots treat
+*humans* (aim wobble 0.19/0.15/0.095 rad, reaction 1.4/1.0/0.65 s, fire rate ×0.4/0.5/0.7, sight 50/70/90 m,
+max 1/2/2 bots on one human at range, Easy never shoots parachuters). Bot-vs-bot fights always use `BOT_VS_BOT`
+so pacing is the same at every difficulty. Aim settles over the first 1.4–3 s of a fight; bots have a field of
+view and can't see through tree leaves.
+
+**Results** (fast-forward sims, 10–12 matches each, kid-profile human):
+- Match length: 7.5–10.2 min, typically ~9–10 min (Normal); ~20 players dead in the first 2 minutes (hot drops),
+  5–10 alive entering the last circles.
+- Human placement (kid profile): Easy wins ~80% of matches; Normal median ~15–25th with 25–40% wins; Hard median ~45th, rare wins.
+  The kid profile is a guess at an average 10–12 year old (`KID` in `tools/sim.js`); re-tune with real playtests.
+- Server CPU, `simulate()` with 75 players on a loaded 4-core box: avg 0.2 ms/tick whole match, 0.4–0.5 ms/tick
+  in the first 3 minutes (p99 ~5–7 ms while everyone lands and plans paths; ≤6 path searches per tick).
+  Snapshot encoding is not included.
