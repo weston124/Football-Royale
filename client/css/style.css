@@ -457,3 +457,15 @@ html.touch-on #scoreboard { min-width: 0; width: min(420px, 90vw); max-height: 8
 html.touch-on.in-match #admin-menu { top: calc(62px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); transform: none; align-items: flex-start; }
 html.touch-on.in-match #admin-toggle { padding: 4px 10px; font-size: 12px; }
 html.touch-on.in-match #admin-drop { max-height: calc(100vh - 110px); }
+
+/* ===== results screen on short (phone landscape) screens ===== */
+@media (max-height: 520px) {
+  #result { padding: 8px 12px; justify-content: center; gap: 8px; overflow-y: auto; }
+  #res-head { font-size: 40px; margin: 4px 0 2px; }
+  #res-sub { font-size: 14px; }
+  .res-card { padding: 10px; gap: 6px; }
+  .res-stats b { font-size: 22px; }
+  .res-card button.big { font-size: 18px; padding: 8px 14px; }
+  #callout .co-main { font-size: 30px; }
+  #callout.win .co-main { font-size: 44px; }
+}
