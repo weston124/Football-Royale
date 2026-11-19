@@ -3,55 +3,50 @@
 # ⚠️  PLAYER ACCOUNTS NEED A PERSISTENT DISK.
 # Accounts, Ball Bucks, items, news and the email "pepper" key are saved as files in FR_DATA_DIR.
 # Render's FREE plan has no disk: every deploy, restart or sleep WIPES ALL ACCOUNTS.
-# So this blueprint uses the paid "starter" plan with a 1 GB disk mounted at /var/data.
+# This blueprint currently uses the FREE plan (see the paid block below to keep accounts).
 # (With a disk, Render runs exactly one instance and deploys have a few seconds of downtime;
 #  players see "restarting for an update" and the game reconnects by itself.)
 services:
   - type: web
     name: football-royale
     runtime: node
-    plan: starter
+    plan: free                         # FREE for now: accounts reset whenever the server restarts or sleeps
     region: oregon
     buildCommand: npm ci --omit=dev
-    startCommand: node server/index.js   # node directly so SIGTERM reaches the server and it saves first
+    startCommand: node server/index.js # node directly so SIGTERM reaches the server and it saves first
     healthCheckPath: /healthz
-    disk:
-      name: football-royale-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: FR_DATA_DIR            # where accounts.json, admin.json and backups live (the disk above)
-        value: /var/data
       - key: ADMIN_USERS            # these usernames get the 👑 Admin drop-down in the game (comma separated)
         value: LONGHORNS 1
       - key: ADMIN_PASSWORD         # password for the /admin web panel; Render asks you for it. Use 16+ random characters.
         sync: false
       - key: CONTACT_EMAIL          # shown on /privacy and /terms so parents can reach you; Render asks you for it
         sync: false
-      # Optional:
-      # - key: PUBLIC_URL           # e.g. https://play.example.com (makes share-preview links use your custom domain)
-      #   value: https://play.example.com
-      # - key: CLIENT_IP_HEADER     # a header with the real player IP that players can't fake, if your setup has one
-      #   value: cf-connecting-ip
 
 # ---------------------------------------------------------------------------------------------
-# FREE PLAN ALTERNATIVE (for trying things out only: ALL ACCOUNTS ARE LOST on every deploy,
-# restart or sleep, and the server sleeps after ~15 minutes with nobody playing).
-# To use it, replace the "services:" block above with this one:
+# PAID PLAN WITH A DISK (recommended once real players join: accounts and Ball Bucks are kept).
+# Replace the "services:" block above with this one (about $7-8/month):
 #
 # services:
 #   - type: web
 #     name: football-royale
 #     runtime: node
-#     plan: free
+#     plan: starter
+#     region: oregon
 #     buildCommand: npm ci --omit=dev
 #     startCommand: node server/index.js
 #     healthCheckPath: /healthz
+#     disk:
+#       name: football-royale-data
+#       mountPath: /var/data
+#       sizeGB: 1
 #     envVars:
 #       - key: NODE_VERSION
 #         value: "22"
+#       - key: FR_DATA_DIR
+#         value: /var/data
 #       - key: ADMIN_USERS
 #         value: LONGHORNS 1
 #       - key: ADMIN_PASSWORD
