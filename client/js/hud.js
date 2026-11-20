@@ -27,17 +27,48 @@ export class Hud {
     if (key === this.lastHot) return;
     this.lastHot = key;
     const slots = [{ w: 'tackle', r: 0 }, ...me.inv];
-    $('hotbar').innerHTML = slots.map((it, i) => {
+    const hb = $('hotbar');
+    // more than the normal 6 slots (admins' unlimited backpack): a scrolling strip
+    const big = slots.length > 6;
+    hb.classList.toggle('big', big);
+    hb.innerHTML = slots.map((it, i) => {
       if (!it) return `<div class="slot ${me.slot === i ? 'sel' : ''}"><span class="key">${i + 1}</span></div>`;
       const col = it.w ? RARITIES[it.r || 0].color : it.c ? RARITIES[CONSUMABLES[it.c].rarity].color : '#888';
       const cnt = it.c ? it.n : it.w === 'whistle' ? it.ammo : '';
       return `<div class="slot ${me.slot === i && !buildKind ? 'sel' : ''}" style="border-color:${col};background:${col}33">
         <span class="key">${i + 1}</span><span class="cnt">${cnt}</span><span class="ic">${ICON[it.w || it.c] || '❔'}</span>${itemName(it)}</div>`;
     }).join('');
+    if (big) this.keepSlotInView(me.slot, me.slot !== this.lastHotSlot);
+    else hb.classList.remove('more-l', 'more-r');
+    this.lastHotSlot = me.slot;
     const cur = slots[me.slot];
     if (buildKind) $('ammo').textContent = `BUILD: ${buildKind.toUpperCase()}`;
     else if (cur && cur.w && WEAPONS[cur.w].mag) $('ammo').textContent = `${cur.ammo} / ${WEAPONS[cur.w].mag}`;
     else $('ammo').textContent = '';
+  }
+
+  // Scrolls the big hotbar so the selected slot is visible (centred when the slot changed)
+  // and fades the edges that have more slots behind them.
+  keepSlotInView(slot, center) {
+    const hb = $('hotbar'), s = hb.children[slot];
+    // don't yank the strip back while the player is swiping through it
+    if (s && (center || !(performance.now() - (this.hotUserScroll || 0) < 3000))) {
+      const l = s.offsetLeft, r = l + s.offsetWidth, pad = s.offsetWidth * 0.6;
+      if (center || l < hb.scrollLeft + pad || r > hb.scrollLeft + hb.clientWidth - pad) {
+        hb.scrollTo({ left: l - (hb.clientWidth - s.offsetWidth) / 2, behavior: center ? 'smooth' : 'auto' });
+      }
+    }
+    if (!this.hotScrollBound) {
+      this.hotScrollBound = true;
+      hb.addEventListener('scroll', () => this.hotEdges(), { passive: true });
+    }
+    this.hotEdges();
+  }
+  hotEdges() {
+    const hb = $('hotbar');
+    if (!hb.classList.contains('big')) return;
+    hb.classList.toggle('more-l', hb.scrollLeft > 4);
+    hb.classList.toggle('more-r', hb.scrollLeft + hb.clientWidth < hb.scrollWidth - 4);
   }
 
   toast(text, ms = 2500) {

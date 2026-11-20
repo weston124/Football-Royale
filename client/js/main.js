@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { generateMap } from '/shared/map.js';
 import { SKIN_PRESETS, SKIN_TONES, HAIR_COLORS, EYE_COLORS, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
-import { RARITIES } from '/shared/weapons.js';
+import { RARITIES, WEAPONS, GUN_IDS } from '/shared/weapons.js';
 import { createPlayer, animatePlayer, disposePlayer, setupEnvironment, loadHuman, createFootball } from './models.js';
 
 try { await loadHuman(); } catch (e) { console.warn('Realistic model failed to load, using simple players', e); }
@@ -344,9 +344,18 @@ $('admin-toggle').onclick = () => {
   const open = $('admin-drop').classList.toggle('hidden') === false;
   if (open) document.exitPointerLock?.();
 };
+// 🔫 armory pickers: every weapon in shared/weapons.js and every rarity
+$('ad-weapon').innerHTML = GUN_IDS.map((w) => `<option value="${w}">${WEAPONS[w].name}</option>`).join('');
+$('ad-rarity').innerHTML = RARITIES.map((r, i) => `<option value="${i}"${i === 4 ? ' selected' : ''}>${r.name}</option>`).join('');
 $('admin-drop').onclick = (e) => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const act = b.dataset.act;
+  if (act === 'give' || act === 'refill' || act === 'everything') {
+    if (!game) { $('ad-status').textContent = 'Admin armory works in Private Rooms and Party Island. Start one first!'; $('ad-status').className = 'err'; return; }
+    if (act === 'give') net.send({ t: 'admin', action: 'armory', weapon: $('ad-weapon').value, rarity: +$('ad-rarity').value });
+    else net.send({ t: 'admin', action: 'armory', [act]: true });
+    return;
+  }
   if (act === 'royale' || act === 'island') net.send({ t: 'admin', action: 'party', kind: act, title: $('ad-title').value });
   else if (act === 'endparty') { if (confirm('End all parties?')) net.send({ t: 'admin', action: 'endparty' }); }
   else if (act === 'broadcast') { net.send({ t: 'admin', action: 'broadcast', text: $('ad-msg').value, style: $('ad-style').value }); $('ad-msg').value = ''; }

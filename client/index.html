@@ -356,6 +356,13 @@
   <div id="admin-menu" class="hidden">
     <button id="admin-toggle">👑 Admin ▾</button>
     <div id="admin-drop" class="hidden">
+      <div class="ad-sec" id="ad-armory">
+        <b>🔫 Give me weapons</b>
+        <div class="ad-row"><select id="ad-weapon" aria-label="Weapon"></select><select id="ad-rarity" aria-label="Rarity"></select><button data-act="give">GIVE</button></div>
+        <button data-act="refill" class="ad-ghost">💪 Max ammo &amp; full heal + padding</button>
+        <button data-act="everything" class="ad-ghost">🎁 Give me 1 of everything (Legendary)</button>
+        <small class="ad-note">Works in Private Rooms, Party Island and Party Royale (not public Quick Play). Your backpack grows: no limit on guns!</small>
+      </div>
       <div class="ad-sec">
         <b>🎉 Parties</b>
         <input id="ad-title" placeholder="Party name (optional)" maxlength="80">

@@ -90,6 +90,13 @@ input, select { background: #fff; color: #111; border: 0; border-radius: 8px; pa
 .slot .key { position: absolute; top: 2px; left: 5px; font-weight: 900; font-size: 12px; opacity: .8; }
 .slot .ic { position: absolute; top: 12px; left: 0; right: 0; font-size: 26px; text-align: center; }
 .slot .cnt { position: absolute; top: 2px; right: 5px; font-weight: 900; font-size: 12px; }
+/* big backpack (admins in Private Rooms / parties): one scrolling strip, selected slot kept in view */
+#hotbar.big { bottom: 12px; max-width: max(466px, min(788px, calc(100vw - 690px)));  /* clear of the health bars */ overflow-x: auto; overflow-y: hidden; padding: 10px 2px 8px; scrollbar-width: none; overscroll-behavior: contain; }
+#hotbar.big::-webkit-scrollbar { display: none; }
+#hotbar.big .slot { flex: 0 0 auto; }
+#hotbar.big.more-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 46px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 46px), transparent); }
+#hotbar.big.more-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 46px); mask-image: linear-gradient(90deg, transparent, #000 46px); }
+#hotbar.big.more-l.more-r { -webkit-mask-image: linear-gradient(90deg, transparent, #000 46px, #000 calc(100% - 46px), transparent); mask-image: linear-gradient(90deg, transparent, #000 46px, #000 calc(100% - 46px), transparent); }
 #ammo { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); font-size: 26px; font-weight: 900; }
 #mats { position: absolute; right: 20px; bottom: 24px; font-size: 20px; font-weight: 800; }
 #mats small { font-size: 12px; opacity: .8; display: block; }
@@ -290,6 +297,9 @@ button.pulse { animation: pulse .7s infinite alternate; }
 #admin-drop button { padding: 7px 8px; font-size: 13px; }
 #admin-drop input, #admin-drop select { padding: 6px 8px; font-size: 13px; }
 #admin-drop .ad-ghost { background: #2a3c6a; color: #fff; box-shadow: none; }
+#admin-drop { max-height: calc(100vh - 70px); overflow: auto; overscroll-behavior: contain; }
+#admin-drop .ad-note { font-size: 11px; opacity: .75; text-transform: none; letter-spacing: 0; line-height: 1.3; }
+#ad-weapon { flex: 1.5; } #ad-rarity { flex: 1.1; } #ad-armory [data-act=give] { flex: 0 0 auto; padding: 7px 12px; }
 .ad-link { color: #ffcc33; font-size: 13px; text-align: right; }
 #ad-status { font-size: 13px; font-weight: 700; color: #7dff9a; min-height: 16px; }
 #ad-status.err { color: #ff8080; }
@@ -348,6 +358,7 @@ html.touch-on #hotbar { pointer-events: auto; bottom: calc(10px + env(safe-area-
 html.touch-on .slot { width: 54px; height: 54px; font-size: 8px; }
 html.touch-on .slot .ic { top: 9px; font-size: 20px; }
 html.touch-on .slot.sel { transform: translateY(-5px); }
+html.touch-on #hotbar.big { bottom: calc(2px + env(safe-area-inset-bottom, 0px)); max-width: min(590px, 58vw); padding: 8px 2px 8px; touch-action: none; }
 html.touch-on #ammo { bottom: 78px; font-size: 20px; }
 html.touch-on #bars { left: calc(12px + env(safe-area-inset-left, 0px)); top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; width: 190px; gap: 4px; }
 html.touch-on .bar { height: 18px; }
@@ -385,6 +396,7 @@ html.touch-on #scoreboard { min-width: 0; width: min(420px, 90vw); max-height: 8
   html.touch-on .slot { width: 42px; height: 42px; font-size: 0; border-width: 2px; border-radius: 8px; }
   html.touch-on .slot .ic { top: 8px; font-size: 18px; }
   html.touch-on .slot .key, html.touch-on .slot .cnt { font-size: 10px; }
+  html.touch-on #hotbar.big { bottom: calc(0px + env(safe-area-inset-bottom, 0px)); padding: 7px 2px 6px; max-width: max(272px, min(368px, calc(100vw - 400px))); }
   html.touch-on #ammo { bottom: 56px; font-size: 16px; }
   html.touch-on #mats { bottom: 78px; }
   html.touch-on #bars { width: 150px; top: calc(6px + env(safe-area-inset-top, 0px)); }
