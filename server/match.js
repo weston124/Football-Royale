@@ -246,7 +246,7 @@ export class Match {
   spawnLoot() {
     const party = this.kind === 'partyRoyale';
     for (const s of MAP.loot) {
-      if (!party && this.rnd() > 0.8) continue;
+      // MORE LOOT: every spot spawns something (it used to skip 1 in 5)
       const y = supportHeight(this.world, s.x, s.y + 0.5, s.z);
       if (this.insideSolid(s.x, y, s.z)) continue;
       const item = this.rollItem(party);
@@ -255,7 +255,8 @@ export class Match {
       const near = (dx, dz) => (this.insideSolid(s.x + dx, y, s.z + dz) || Math.abs(supportHeight(this.world, s.x + dx, y + 0.5, s.z + dz) - y) > 0.3 ? [s.x, s.z] : [s.x + dx, s.z + dz]);
       const at = (it, dx, dz) => { const [x, z] = near(dx, dz); this.addLoot(it, x, y, z); };
       if (party) at(this.rollItem(true), -0.9, 0.9);
-      if (item.w && item.w !== 'whistle' && this.rnd() < 0.5) at({ c: 'tape', n: 2 }, 0.8, 0.5);
+      else if (this.rnd() < 0.5) at(this.rollItem(false), -0.9, 0.9); // bonus item half the time
+      if (item.w && item.w !== 'whistle' && this.rnd() < 0.7) at({ c: 'tape', n: 2 }, 0.8, 0.5);
       if (this.mode === 'build' && this.rnd() < 0.25) at({ mats: 30 }, -0.8, -0.5);
     }
   }
@@ -624,8 +625,8 @@ export class Match {
     if (Math.hypot(c.x - p.x, c.z - p.z) > PICKUP_RANGE + 1.2 || Math.abs(c.y - p.y) > 2.5) return;
     c.open = true;
     this.events.push(['co', id]);
-    const items = [this.rollWeapon(true), this.rollItem(true)];
-    if (this.rnd() < 0.5) items.push({ c: 'padding', n: 1 });
+    const items = [this.rollWeapon(true), this.rollWeapon(true), this.rollItem(true)]; // MORE LOOT: 2 weapons per bag
+    if (this.rnd() < 0.7) items.push({ c: 'padding', n: 1 });
     if (this.mode === 'build') items.push({ mats: BUILD.crateMats });
     items.forEach((it, i) => {
       const a = (i / items.length) * Math.PI * 2 + 0.4;
