@@ -166,6 +166,50 @@ button.small { padding: 4px 10px; font-size: 12px; }
 #reward { position: fixed; top: 90px; left: 50%; transform: translateX(-50%); z-index: 57; background: rgba(0,0,0,.6); border: 2px solid #ffcc33; border-radius: 20px; padding: 8px 18px; font-weight: 900; font-size: 20px; color: #ffcc33; pointer-events: none; animation: drop .3s ease-out; }
 @media (max-width: 700px) { .shop-foot { grid-template-columns: 1fr; } }
 
+/* ===== ⭐ Daily Item Shop + shop tabs ===== */
+#shop.daily { background: radial-gradient(ellipse at 50% -10%, #5b2bd1 0%, #24125e 45%, #0b0726 100%); }
+#shop.daily::before { content: ''; position: fixed; inset: 0; pointer-events: none; opacity: .5;
+  background: repeating-conic-gradient(from 0deg at 50% -20%, rgba(255,255,255,.05) 0 6deg, transparent 6deg 14deg); }
+#shop .shop-panel { position: relative; }
+.shop-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.shop-tabs { flex: 1; display: flex; gap: 8px; min-width: 0; }
+.shop-tabs button { flex: 0 1 auto; background: rgba(0,0,0,.35); color: #fff; box-shadow: 0 4px 0 rgba(0,0,0,.4); border: 2px solid rgba(255,255,255,.18); white-space: nowrap; }
+.shop-tabs button.on { background: linear-gradient(180deg, #ffe066, #ffb31a); color: #2a1600; border-color: #fff3b0; box-shadow: 0 4px 0 #a86a00; }
+.daily-head { align-items: flex-end; }
+#shop.daily .shop-head h2 { color: #fff; text-shadow: 3px 3px 0 #2a0f6e, 0 0 24px rgba(255,214,102,.65); }
+.daily-timer { background: rgba(0,0,0,.4); border: 2px solid #ffd666; border-radius: 22px; padding: 7px 14px; font-weight: 800; white-space: nowrap; }
+.daily-timer b { color: #ffd666; font-variant-numeric: tabular-nums; }
+.daily-sub { margin: 4px 0 -4px; font-size: 18px; font-style: italic; letter-spacing: 1px; color: #cbb8ff; text-transform: uppercase; }
+.daily-featured { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.fcard { position: relative; border-radius: 18px; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr; min-height: 300px;
+  border: 3px solid var(--rc); background: linear-gradient(135deg, color-mix(in srgb, var(--rc) 55%, #120830) 0%, #120830 80%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset, 0 0 26px color-mix(in srgb, var(--rc) 55%, transparent), 0 8px 0 rgba(0,0,0,.35); }
+.fcard::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.18) 50%, transparent 65%); background-size: 250% 100%; animation: shine 3.5s ease-in-out infinite; }
+@keyframes shine { 0% { background-position: 130% 0; } 60%, 100% { background-position: -130% 0; } }
+.fcard .art { background: radial-gradient(circle at 50% 62%, var(--rc) 0%, transparent 70%); display: flex; align-items: flex-end; justify-content: center; }
+.fcard .art img { height: 300px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 10px 14px rgba(0,0,0,.55)); }
+.fcard .info { padding: 16px 16px 16px 4px; display: flex; flex-direction: column; justify-content: center; gap: 8px; z-index: 1; }
+.fcard .ribbon { align-self: flex-start; background: linear-gradient(90deg, #ff3fa4, #ffb31a); color: #fff; font-weight: 900; font-size: 13px; letter-spacing: 2px; padding: 4px 10px; border-radius: 6px; transform: skew(-10deg); text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.fcard .nm { font-size: 28px; font-weight: 900; font-style: italic; line-height: 1.05; text-shadow: 2px 2px 0 rgba(0,0,0,.5); }
+.fcard .meta { font-size: 13px; font-weight: 800; color: var(--rc); text-transform: uppercase; letter-spacing: 1px; }
+.fcard button { font-size: 18px; padding: 12px; }
+.fcard button.owned { background: #4fd16b; color: #0b2a12; box-shadow: 0 4px 0 #2a8a3c; }
+.fcard button.cant { background: #555; color: #ddd; box-shadow: 0 4px 0 #333; }
+#daily-items .card { background: linear-gradient(180deg, color-mix(in srgb, var(--rc) 30%, #150b38) 0%, #150b38 70%); box-shadow: 0 0 14px color-mix(in srgb, var(--rc) 35%, transparent); }
+#daily-items .card .meta, .card .rar { color: var(--rc); opacity: 1; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; }
+.card .tag-new { position: absolute; top: 8px; left: 8px; background: #ff3fa4; color: #fff; font-weight: 900; font-size: 11px; padding: 2px 7px; border-radius: 5px; }
+#daily-items .card { position: relative; }
+@media (max-width: 700px) {
+  .shop-tabs { flex-basis: 100%; order: 3; }
+  .shop-tabs button { flex: 1; padding: 9px 6px; font-size: 14px; }
+  .daily-featured { grid-template-columns: 1fr; }
+  .fcard { min-height: 220px; }
+  .fcard .art img { height: 220px; }
+  .fcard .nm { font-size: 21px; }
+  .fcard .info { padding: 12px 12px 12px 0; }
+  .daily-timer { font-size: 13px; padding: 5px 10px; }
+}
+
 /* ===== Locker Room layout: hero Quick Play, squad card, tabs ===== */
 button.ghost { background: rgba(255,255,255,.1); color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.16); }
 button.ghost:active { box-shadow: 0 1px 0 rgba(0,0,0,.35); }

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { generateMap } from '/shared/map.js';
 import { SKIN_PRESETS, SKIN_TONES, HAIR_COLORS, EYE_COLORS, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
+import { dailyShop, utcDateKey, anyShopItem, dailyItem } from '/shared/shop.js';
 import { RARITIES, WEAPONS, GUN_IDS } from '/shared/weapons.js';
 import { createPlayer, animatePlayer, disposePlayer, setupEnvironment, loadHuman, createFootball } from './models.js';
 
@@ -504,7 +505,12 @@ net.on('error', (m) => {
 });
 
 // ---------- news & scheduled events ----------
-net.on('info', (m) => { info = m; renderNews(); });
+net.on('info', (m) => {
+  info = m;
+  if (m.shop) shopClock = m.shop.now - Date.now(); // server time - my time (the countdown follows the server)
+  renderNews();
+  if (!$('shop').classList.contains('hidden')) renderShop();
+});
 function renderNews() {
   $('news').innerHTML = info.news.map((n) => `<div class="news-item"><b>${esc(n.title)}</b>${esc(n.body)}<br><small>${new Date(n.date).toLocaleDateString()}</small></div>`).join('') || '<small>No updates yet.</small>';
   renderEvents();
@@ -601,25 +607,27 @@ net.on('reward', (m) => {
   clearTimeout(rewardTimer);
   rewardTimer = setTimeout(() => el.classList.add('hidden'), 2500);
 });
+const wearSkin = (id) => {
+  const p = SKIN_PRESETS.find((x) => x.id === id);
+  profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn });
+  saveProfile(); refreshPreview();
+};
 net.on('bought', (m) => {
-  const item = SHOP.find((i) => i.id === m.item);
+  const item = anyShopItem(m.item);
   sfx.chest(); confetti(1800);
-  $('shop-msg').textContent = '';
-  if (item && item.kind === 'skin') {
-    const p = SKIN_PRESETS.find((x) => x.id === item.id);
-    profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn });
-    saveProfile(); refreshPreview();
-  }
+  $('shop-msg').textContent = item && item.kind === 'emote' ? `🎉 ${item.name} is yours! Press G (or 💃) in a match to use it.` : '';
+  if (item && item.kind === 'skin') wearSkin(item.id);
 });
 const artCache = new Map();
+const ART_FRAME = { 8: 2.4, 9: 1.6, 10: 0.6, 11: 0.35, 12: 0.4, 13: 0.5 }; // the best moment of each emote for its poster
 function itemArt(item) {
   if (artCache.has(item.id)) return artCache.get(item.id);
   const skin = item.kind === 'skin'
     ? sanitizeSkin({ ...SKIN_PRESETS.find((p) => p.id === item.id), preset: item.id, number: 1 + (item.price % 97), tone: profile.skin.tone })
-    : { ...profile.skin, horns: profile.skin.horns || '#f3ead2' };
+    : item.shop === 'daily' ? { ...profile.skin } : { ...profile.skin, horns: profile.skin.horns || '#f3ead2' };
   const m = createPlayer(skin);
   m.rotation.y = Math.PI + 0.35;
-  animatePlayer(m, { speed: 0, phase: 0, emote: item.emote || 3, emoteT: item.emote === 8 ? 2.4 : 0.55, t: 1 }, 1 / 60);
+  animatePlayer(m, { speed: 0, phase: 0, emote: item.emote || 3, emoteT: ART_FRAME[item.emote] ?? 0.55, t: 1 }, 1 / 60);
   const was = pModel; if (pModel) pModel.visible = false;
   pScene.add(m);
   pr.render(pScene, pCam);
@@ -629,33 +637,72 @@ function itemArt(item) {
   artCache.set(item.id, url);
   return url;
 }
-function renderShop() {
-  $('shop-items').innerHTML = SHOP.map((item) => {
-    const r = RARITIES[item.rarity || 0];
-    const owned = account.owned.includes(item.id);
-    const afford = account.bucks >= item.price;
-    return `<div class="card" style="--rc:${r.color}">
+const buyLabel = (item) => (account.owned.includes(item.id) ? (item.kind === 'skin' ? '✅ Owned · Wear' : '✅ Owned') : `🏈 ${item.price.toLocaleString()}`);
+const buyClass = (item) => (account.owned.includes(item.id) ? 'owned' : account.bucks >= item.price ? '' : 'cant');
+function card(item, isNew) {
+  const r = RARITIES[item.rarity || 0];
+  return `<div class="card" style="--rc:${r.color}">
+      ${isNew ? '<span class="tag-new">NEW</span>' : ''}
       <div class="art"><img src="${itemArt(item)}" alt=""></div>
       <div class="info">
         <div class="nm">${esc(item.name)}</div>
         <div class="meta">${r.name} ${item.kind === 'skin' ? 'Outfit' : 'Emote'}</div>
-        <button data-buy="${item.id}" class="${owned ? 'owned' : afford ? '' : 'cant'}">${owned ? '✅ Owned' : `🏈 ${item.price.toLocaleString()}`}</button>
+        <button data-buy="${item.id}" class="${buyClass(item)}">${buyLabel(item)}</button>
+      </div></div>`;
+}
+// ⭐ Daily Item Shop: today's pick comes from the server (info.shop); the same seeded pick is
+// worked out here too until the first info message arrives.
+let shopClock = 0, shopTab = store.get('fr_shop_tab', 'daily') === 'longhorn' ? 'longhorn' : 'daily';
+const todaysShop = () => info.shop || dailyShop(utcDateKey());
+function renderDaily() {
+  const d = todaysShop();
+  $('daily-featured').innerHTML = d.featured.map(dailyItem).filter(Boolean).map((item) => {
+    const r = RARITIES[item.rarity || 0];
+    return `<div class="fcard" style="--rc:${r.color}">
+      <div class="art"><img src="${itemArt(item)}" alt=""></div>
+      <div class="info">
+        <span class="ribbon">★ FEATURED</span>
+        <div class="nm">${esc(item.name)}</div>
+        <div class="meta">${r.name} ${item.kind === 'skin' ? 'Outfit' : 'Emote'}</div>
+        <button data-buy="${item.id}" class="${buyClass(item)}">${buyLabel(item)}</button>
       </div></div>`;
   }).join('');
+  $('daily-items').innerHTML = d.items.map(dailyItem).filter(Boolean).map((item) => card(item, false)).join('');
+  tickDaily();
 }
-function openShop() {
+function tickDaily() {
+  const left = todaysShop().resetsAt - (Date.now() + shopClock);
+  const h = Math.floor(left / 3600_000), mn = Math.floor((left % 3600_000) / 60_000), sec = Math.floor((left % 60_000) / 1000);
+  $('daily-cd').textContent = left <= 0 ? 'any second now!' : h ? `${h}h ${mn}m` : mn ? `${mn}m ${sec}s` : `${sec}s`;
+}
+setInterval(() => { if (!$('shop').classList.contains('hidden') && shopTab === 'daily') tickDaily(); }, 1000);
+function renderShop() {
+  $('shop').classList.toggle('daily', shopTab === 'daily');
+  [...$('shop-tabs').children].forEach((b) => b.classList.toggle('on', b.dataset.shop === shopTab));
+  document.querySelectorAll('#shop .shop-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== shopTab));
+  if (shopTab === 'daily') return renderDaily();
+  $('shop-items').innerHTML = SHOP.map((item) => card(item, false)).join('');
+}
+$('shop-tabs').onclick = (e) => {
+  const b = e.target.closest('button[data-shop]'); if (!b || b.dataset.shop === shopTab) return;
+  shopTab = b.dataset.shop; store.set('fr_shop_tab', shopTab); sfx.click();
+  $('shop-msg').textContent = '';
+  renderShop();
+};
+function openShop(tab) {
   initAudio();
+  if (tab === 'daily' || tab === 'longhorn') shopTab = tab;
   $('shop-msg').textContent = '';
   $('shop').classList.remove('hidden');
   renderShop();
 }
-$('open-shop').onclick = openShop;
+$('open-shop').onclick = () => openShop('daily'); // the Daily Shop is the front page
 $('close-shop').onclick = () => { $('shop').classList.add('hidden'); renderSkins(); };
-$('shop-items').onclick = (e) => {
+$('shop').onclick = (e) => {
   const b = e.target.closest('button[data-buy]'); if (!b) return;
-  const item = SHOP.find((i) => i.id === b.dataset.buy);
+  const item = anyShopItem(b.dataset.buy); if (!item) return;
   if (account.owned.includes(item.id)) {
-    if (item.kind === 'skin') { $('close-shop').click(); const p = SKIN_PRESETS.find((x) => x.id === item.id); profile.skin = sanitizeSkin({ ...p, preset: p.id, number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn }); saveProfile(); refreshPreview(); renderSkins(); }
+    if (item.kind === 'skin') { $('close-shop').click(); wearSkin(item.id); renderSkins(); }
     return;
   }
   if (account.bucks < item.price) { $('shop-msg').textContent = `You need ${(item.price - account.bucks).toLocaleString()} more Ball Bucks. Keep playing to earn more!`; return; }

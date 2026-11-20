@@ -99,6 +99,16 @@
     </section>
 
     <section class="card">
+      <h2>⭐ Daily Shop</h2>
+      <p style="margin:0;color:var(--muted);font-size:13px">Today's items (<span id="shop-date"></span>, new items at midnight UTC in <b id="shop-cd"></b>). The pick is the same for every player.</p>
+      <div class="list" id="shop-list"></div>
+      <label for="shop-pick">Add any Daily Shop item to today's rotation (as Featured, until midnight UTC):</label>
+      <select id="shop-pick"></select>
+      <button id="shop-feature">⭐ Feature an item today</button>
+      <div class="msg" id="shop-msg"></div>
+    </section>
+
+    <section class="card">
       <h2>📢 Message everyone</h2>
       <textarea id="bc-text" maxlength="200" placeholder="Shows up at the top of every player's screen, even mid-match!"></textarea>
       <div class="row styles" id="bc-style">
@@ -183,9 +193,38 @@
       $('s-profiles').textContent = `${s.profiles} accounts.`;
       $('news-list').innerHTML = s.news.map((n) => `<div class="item"><span><b>${esc(n.title)}</b><br><small>${new Date(n.date).toLocaleString()}</small></span><span style="flex:0;display:flex;gap:4px"><button class="ghost" data-edit="${n.id}">Edit</button><button class="ghost" data-del="${n.id}">🗑️</button></span></div>`).join('');
       $('news-list').dataset.items = JSON.stringify(s.news);
+      renderShop(s);
       $('ev-list').innerHTML = s.allEvents.slice().sort((a, b) => a.time - b.time).map((e) => `<div class="item"><span><b>${esc(e.title)}</b><br><small>${new Date(e.time).toLocaleString()} · ${e.kind === 'island' ? 'Party Island' : 'Party Royale'}${e.fired ? ' · ✅ done' : ''}</small></span><button class="ghost" data-evdel="${e.id}" style="flex:0">🗑️</button></div>`).join('') || '<small style="color:var(--muted)">Nothing scheduled.</small>';
     }
     setInterval(refresh, 5000);
+
+    // ⭐ Daily Shop: today's rotation + items the admin featured today
+    const RARITY = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
+    function renderShop(s) {
+      if (!s.shop || !s.shopPool) return;
+      const pool = new Map(s.shopPool.map((i) => [i.id, i]));
+      const row = (id, featured) => {
+        const i = pool.get(id); if (!i) return '';
+        const forced = s.forced.includes(id);
+        return `<div class="item"><span>${featured ? '⭐ ' : ''}<b>${esc(i.name)}</b><br><small>${RARITY[i.rarity || 0]} ${i.kind === 'skin' ? 'outfit' : 'emote'} · 🏈 ${i.price}${featured ? ' · Featured' : ''}${forced ? ' · added by admin' : ''}</small></span>${forced ? `<button class="ghost" data-unfeature="${esc(id)}" style="flex:0">Remove</button>` : ''}</div>`;
+      };
+      $('shop-list').innerHTML = s.shop.featured.map((id) => row(id, true)).join('') + s.shop.items.map((id) => row(id, false)).join('');
+      $('shop-date').textContent = s.shop.date;
+      const left = s.shop.resetsAt - s.shop.now;
+      $('shop-cd').textContent = `${Math.floor(left / 3600000)}h ${Math.floor((left % 3600000) / 60000)}m`;
+      const inShop = new Set(s.shop.featured);
+      const sel = $('shop-pick').value;
+      $('shop-pick').innerHTML = s.shopPool.filter((i) => !inShop.has(i.id)).map((i) => `<option value="${esc(i.id)}">${esc(i.name)} (${RARITY[i.rarity || 0]} ${i.kind === 'skin' ? 'outfit' : 'emote'})</option>`).join('');
+      if (sel && [...$('shop-pick').options].some((o) => o.value === sel)) $('shop-pick').value = sel;
+    }
+    $('shop-feature').onclick = async () => {
+      try { await api('feature', { item: $('shop-pick').value }); flash('shop-msg', '⭐ Added to today\'s Daily Shop as a Featured item!'); refresh(); }
+      catch (e) { if (e.message !== 'auth') flash('shop-msg', e.message, true); }
+    };
+    $('shop-list').onclick = async (e) => {
+      const b = e.target.closest('button[data-unfeature]'); if (!b) return;
+      try { await api('feature', { item: b.dataset.unfeature, remove: true }); refresh(); } catch (err) { if (err.message !== 'auth') flash('shop-msg', err.message, true); }
+    };
 
     $('party-btn').onclick = async () => {
       try {

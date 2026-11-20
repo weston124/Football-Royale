@@ -5,7 +5,8 @@ export const HAIR_COLORS = ['#b8894f', '#8a6239', '#5a3d24', '#2e1f14', '#121010
 export const HAIR_STYLES = ['wavy', 'flow', 'short', 'buzz'];
 export const EYE_COLORS = ['#3d78b8', '#5f8f6a', '#5a3a22', '#2a1a10', '#7a8a96'];
 
-// unlock: earned by playing. price: bought in the Longhorn Item Shop with Ball Bucks.
+// unlock: earned by playing. price: bought with Ball Bucks in the Longhorn Item Shop, or, with
+// shop: 'daily', in the Daily Item Shop when today's rotation has it (shared/shop.js).
 export const SKIN_PRESETS = [
   // style: extra uniform details drawn by the game (lightning bolts, towel, pads, crowns...)
   { id: 'thunder', team: 'Royale Thunder', jersey: '#1c2030', accent: '#d42a2a', helmet: '#1c2030', stripe: '#d42a2a', mask: '#d9d9d9', pants: '#1c2030',
@@ -32,12 +33,40 @@ export const SKIN_PRESETS = [
   { id: 'rhinos',   team: 'Robo Rhinos',       jersey: '#7a8088', accent: '#ff2e2e', helmet: '#3a3f45', stripe: '#ff2e2e', mask: '#ff2e2e', pants: '#3a3f45', unlock: { wins: 3 } },
   { id: 'galaxy',   team: 'Galaxy Gladiators', jersey: '#0b0b2a', accent: '#ff7bf2', helmet: '#0b0b2a', stripe: '#6df7ff', mask: '#ffffff', pants: '#0b0b2a', unlock: { kills: 50 } },
   // ---------- LONGHORN ITEM SHOP ----------
-  { id: 'lh_ranch',    team: 'Ranch Hand Longhorn', jersey: '#c9a26b', accent: '#5a3a1e', helmet: '#5a3a1e', stripe: '#e9d8b4', mask: '#e9d8b4', pants: '#e9d8b4', horns: '#f3ead2', price: 800,  rarity: 2 },
-  { id: 'lh_rodeo',    team: 'Rodeo Longhorn',      jersey: '#b3202a', accent: '#ffffff', helmet: '#ffffff', stripe: '#b3202a', mask: '#222222', pants: '#2b2b2b', horns: '#efe6cf', price: 800,  rarity: 2 },
-  { id: 'lh_desert',   team: 'Desert Longhorn',     jersey: '#e2c48f', accent: '#1f8a87', helmet: '#1f8a87', stripe: '#e2c48f', mask: '#e2c48f', pants: '#e2c48f', horns: '#fff6e0', price: 800,  rarity: 2 },
+  { id: 'lh_ranch',    team: 'Ranch Hand Longhorn', jersey: '#c9a26b', accent: '#5a3a1e', helmet: '#5a3a1e', stripe: '#e9d8b4', mask: '#e9d8b4', pants: '#e9d8b4', horns: '#f3ead2', price: 1000, rarity: 2 },
+  { id: 'lh_rodeo',    team: 'Rodeo Longhorn',      jersey: '#b3202a', accent: '#ffffff', helmet: '#ffffff', stripe: '#b3202a', mask: '#222222', pants: '#2b2b2b', horns: '#efe6cf', price: 1000, rarity: 2 },
+  { id: 'lh_desert',   team: 'Desert Longhorn',     jersey: '#e2c48f', accent: '#1f8a87', helmet: '#1f8a87', stripe: '#e2c48f', mask: '#e2c48f', pants: '#e2c48f', horns: '#fff6e0', price: 1000, rarity: 2 },
   { id: 'lh_thunder',  team: 'Thunderhorn',         jersey: '#1f3fae', accent: '#ffe23a', helmet: '#1f3fae', stripe: '#ffe23a', mask: '#ffe23a', pants: '#ffffff', horns: '#ffe23a', price: 1200, rarity: 3 },
   { id: 'lh_midnight', team: 'Midnight Longhorn',   jersey: '#151515', accent: '#b9c0c9', helmet: '#151515', stripe: '#b9c0c9', mask: '#b9c0c9', pants: '#151515', horns: '#d9dee5', price: 1200, rarity: 3 },
   { id: 'lh_golden',   team: 'Golden Longhorn',     jersey: '#f2b705', accent: '#ffffff', helmet: '#f2b705', stripe: '#ffffff', mask: '#ffffff', pants: '#ffffff', horns: '#fff1a8', price: 2000, rarity: 4 },
+  // ---------- DAILY ITEM SHOP pool (a few of these are for sale each day) ----------
+  // extra style options: yoke (shoulders in the accent color), hoops (stripes around the jersey)
+  { id: 'd_volcano', team: 'Volcano Vanguard', jersey: '#2b1712', accent: '#ff5a1f', helmet: '#2b1712', stripe: '#ffb02e', mask: '#ff5a1f', pants: '#2b1712', body: 'm', shop: 'daily', price: 2500, rarity: 4,
+    style: { bolts: true, towel: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, whiteNumbers: true, cleats: '#ff5a1f' } },
+  { id: 'd_nebula',  team: 'Nebula Ranger',    jersey: '#1b1046', accent: '#7df9ff', helmet: '#1b1046', stripe: '#ff7bf2', mask: '#7df9ff', pants: '#2c1a66', body: 'f', shop: 'daily', price: 2500, rarity: 4,
+    style: { yoke: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, whiteNumbers: true, cleats: '#7df9ff' } },
+  { id: 'd_dragon',  team: 'Dragon Defender',  jersey: '#1f7a3a', accent: '#ffd23f', helmet: '#145028', stripe: '#ffd23f', mask: '#ffd23f', pants: '#145028', body: 'm', horns: '#ffd23f', shop: 'daily', price: 2500, rarity: 4,
+    style: { yoke: true, towel: true, pads: true, crewSocks: true, cleats: '#ffd23f' } },
+  { id: 'd_arctic',  team: 'Arctic Ace',       jersey: '#eef8ff', accent: '#3fb7ff', helmet: '#eef8ff', stripe: '#3fb7ff', mask: '#3fb7ff', pants: '#cfe9ff', body: 'f', shop: 'daily', price: 2000, rarity: 3,
+    style: { yoke: true, towel: true, crowns: true, pads: true, crewSocks: true, cleats: '#3fb7ff' } },
+  { id: 'd_neon',    team: 'Neon Nightfall',   jersey: '#101014', accent: '#39ff6a', helmet: '#101014', stripe: '#39ff6a', mask: '#39ff6a', pants: '#101014', body: 'm', shop: 'daily', price: 2000, rarity: 3,
+    style: { bolts: true, pads: true, crewSocks: true, armSleeve: true, whiteNumbers: true, cleats: '#39ff6a' } },
+  { id: 'd_thunderq', team: 'Thunder Queen',   jersey: '#5b2bb5', accent: '#ffe23a', helmet: '#5b2bb5', stripe: '#ffe23a', mask: '#ffe23a', pants: '#ffffff', body: 'f', shop: 'daily', price: 2000, rarity: 3,
+    style: { bolts: true, towel: true, crowns: true, pads: true, crewSocks: true, armSleeve: true, cleats: '#ffe23a' } },
+  { id: 'd_cyber',   team: 'Cyber Center',     jersey: '#aeb6c2', accent: '#1e7bff', helmet: '#1c2230', stripe: '#1e7bff', mask: '#1e7bff', pants: '#1c2230', body: 'm', shop: 'daily', price: 2000, rarity: 3,
+    style: { yoke: true, pads: true, armSleeve: true, whiteNumbers: true, cleats: '#1e7bff' } },
+  { id: 'd_retro',   team: 'Retro Rookie',     jersey: '#e3a92b', accent: '#6b3a1c', helmet: '#6b3a1c', stripe: '#e3a92b', mask: '#e3d6b8', pants: '#efe3c4', body: 'm', shop: 'daily', price: 1500, rarity: 2,
+    style: { hoops: true, crewSocks: true, cleats: '#2a1a10' } },
+  { id: 'd_sunset',  team: 'Sunset Striker',   jersey: '#ff7a3d', accent: '#ff3f8e', helmet: '#ff3f8e', stripe: '#ffd166', mask: '#ffffff', pants: '#ffffff', body: 'f', shop: 'daily', price: 1500, rarity: 2,
+    style: { hoops: true, towel: true, pads: true, crewSocks: true, cleats: '#ff3f8e' } },
+  { id: 'd_camo',    team: 'Camo Captain',     jersey: '#556b2f', accent: '#c2b280', helmet: '#3b4a22', stripe: '#c2b280', mask: '#2a2a1e', pants: '#c2b280', body: 'm', shop: 'daily', price: 1500, rarity: 2,
+    style: { yoke: true, pads: true, crewSocks: true, cleats: '#3b4a22' } },
+  { id: 'd_tidal',   team: 'Tidal Wave',       jersey: '#0f7c8c', accent: '#0b2a4a', helmet: '#0b2a4a', stripe: '#7ff3ff', mask: '#7ff3ff', pants: '#ffffff', body: 'm', shop: 'daily', price: 1500, rarity: 2,
+    style: { hoops: true, towel: true, pads: true, armSleeve: true, cleats: '#0b2a4a' } },
+  { id: 'd_bubble',  team: 'Bubblegum Blitz',  jersey: '#ff8ac8', accent: '#ffffff', helmet: '#ff8ac8', stripe: '#ffffff', mask: '#ffffff', pants: '#ffffff', body: 'f', shop: 'daily', price: 1200, rarity: 1 },
+  { id: 'd_jungle',  team: 'Jungle Juggernaut', jersey: '#2f8a3b', accent: '#f2c14e', helmet: '#f2c14e', stripe: '#2f8a3b', mask: '#2f8a3b', pants: '#f2c14e', body: 'm', shop: 'daily', price: 1200, rarity: 1 },
+  { id: 'd_pumpkin', team: 'Pumpkin Punter',   jersey: '#ff8a1f', accent: '#1a1a1a', helmet: '#1a1a1a', stripe: '#ff8a1f', mask: '#ff8a1f', pants: '#1a1a1a', body: 'f', shop: 'daily', price: 1200, rarity: 1,
+    style: { hoops: true, crewSocks: true, cleats: '#1a1a1a' } },
 ];
 
 export const EMOTES = [
@@ -47,16 +76,25 @@ export const EMOTES = [
   { id: 4, name: 'Helmet Salute',    dur: 2.0 },
   { id: 5, name: 'Ref Signals',      dur: 3.2, loop: true },
   // ---------- LONGHORN ITEM SHOP ----------
-  { id: 6, name: 'Stampede Stomp', dur: 4.0, loop: true, price: 500, rarity: 2 },
-  { id: 7, name: 'Lasso Spin',     dur: 4.0, loop: true, price: 500, rarity: 2 },
-  { id: 8, name: 'Bull Charge',    dur: 3.0, loop: true, price: 700, rarity: 3 },
+  { id: 6, name: 'Stampede Stomp', dur: 4.0, loop: true, price: 1000, rarity: 2 },
+  { id: 7, name: 'Lasso Spin',     dur: 4.0, loop: true, price: 1000, rarity: 2 },
+  { id: 8, name: 'Bull Charge',    dur: 3.0, loop: true, price: 1000, rarity: 3 },
+  // ---------- DAILY ITEM SHOP pool ----------
+  { id: 9,  name: 'Spin Move',      dur: 2.4,             shop: 'daily', price: 1000, rarity: 1 },
+  { id: 10, name: 'Air Guitar',     dur: 4.0, loop: true, shop: 'daily', price: 1500, rarity: 3 },
+  { id: 11, name: 'Sprinkler',      dur: 4.0, loop: true, shop: 'daily', price: 1200, rarity: 2 },
+  { id: 12, name: 'Chest Flex',     dur: 3.0, loop: true, shop: 'daily', price: 1000, rarity: 1 },
+  { id: 13, name: 'Wave Ripple',    dur: 4.0, loop: true, shop: 'daily', price: 1200, rarity: 2 },
 ];
 
-// Everything in the Longhorn Item Shop
-export const SHOP = [
-  ...SKIN_PRESETS.filter((s) => s.price).map((s) => ({ id: s.id, kind: 'skin', name: s.team, price: s.price, rarity: s.rarity })),
-  ...EMOTES.filter((e) => e.price).map((e) => ({ id: `emote${e.id}`, kind: 'emote', emote: e.id, name: e.name, price: e.price, rarity: e.rarity })),
+const shopItems = (which) => [
+  ...SKIN_PRESETS.filter((s) => s.price && (s.shop || 'longhorn') === which).map((s) => ({ id: s.id, kind: 'skin', name: s.team, price: s.price, rarity: s.rarity, shop: which })),
+  ...EMOTES.filter((e) => e.price && (e.shop || 'longhorn') === which).map((e) => ({ id: `emote${e.id}`, kind: 'emote', emote: e.id, name: e.name, price: e.price, rarity: e.rarity, shop: which })),
 ];
+// Everything in the Longhorn Item Shop (always for sale)
+export const SHOP = shopItems('longhorn');
+// Every item that can show up in the Daily Item Shop (today's picks: dailyShop() in shared/shop.js)
+export const DAILY_POOL = shopItems('daily');
 
 export const BUCKS = { perElim: 10, win: 100, top10: 20, top25: 10, match: 5, perDollar: 100 };
 

@@ -570,6 +570,13 @@ function paintShell(skin, arr) {
       if ((d > 0.085 && d < 0.1) || (d > 0.115 && d < 0.13)) col = white;
       else if (d >= 0.1 && d <= 0.115) col = trim;
     }
+    // Daily Shop patterns, under the sleeve stripes/bolts: shoulder yoke and hoop stripes
+    if (col === base && !st.referee) {
+      const dy = sh[1] - y;                                   // how far below the shoulder line
+      // wide bands only: the shell is colored per vertex, so thin lines would look ragged
+      if (st.yoke && dy < 0.08) col = trim;
+      else if (st.hoops && ((dy > 0.13 && dy < 0.22) || (dy > 0.3 && dy < 0.39))) col = trim;
+    }
     setC(arr, i, col);
   }
 }

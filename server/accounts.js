@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { SHOP } from '../shared/skins.js';
+import { dailyItem, dailyIds } from '../shared/shop.js';
 import { loadJson, jsonStore, writeFileAtomic } from './safefile.js';
 
 const USERNAME = /^[A-Za-z0-9_]+( [A-Za-z0-9_]+)*$/; // single spaces between words are OK
@@ -120,9 +121,11 @@ export function createAccounts(root) {
       if (stat) u.stats[stat] = (u.stats[stat] || 0) + 1;
       save();
     },
-    buy(u, itemId) {
-      const item = SHOP.find((i) => i.id === itemId);
-      if (!item) return 'That item is not in the shop.';
+    // daily = today's Daily Item Shop ({featured, items} ids, see shared/shop.js). Longhorn items
+    // are always for sale; Daily items only while they are in today's rotation.
+    buy(u, itemId, daily = null) {
+      const item = SHOP.find((i) => i.id === itemId) || (daily && dailyIds(daily).includes(itemId) ? dailyItem(itemId) : null);
+      if (!item) return dailyItem(itemId) ? 'That item is not in today\'s Daily Shop. Check back tomorrow!' : 'That item is not in the shop.';
       if (u.owned.includes(item.id)) return 'You already own that!';
       if (u.bucks < item.price) return `You need ${item.price - u.bucks} more Ball Bucks.`;
       u.bucks -= item.price;

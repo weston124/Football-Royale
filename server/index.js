@@ -404,7 +404,7 @@ function handleMessage(c, m, ip) {
         return send(c, { t: 'auth_needed' });
       }
       case 'buy': {
-        const problem = accounts.buy(c.profile, String(m.item || '').slice(0, 64));
+        const problem = accounts.buy(c.profile, String(m.item || '').slice(0, 64), admin.todayShop()); // Longhorn items + today's Daily Shop
         if (problem) return err(c, problem);
         send(c, { t: 'bought', item: String(m.item) });
         sendProfile(c);
