@@ -130,6 +130,12 @@ export function createAdmin({ root, hub }) {
         if (!u) return json(400, { error: 'No player with that username' });
         return json(200, { ok: true });
       }
+      case 'resetpw': {
+        const r = await hub.resetPassword(clean(b.username, 16));
+        if (!r) return json(400, { error: 'No player with that username' });
+        console.log(`admin panel reset the password of ${r.user.username}`);
+        return json(200, { ok: true, username: r.user.username, temp: r.temp });
+      }
       case 'endparty': hub.endParties(); return json(200, { ok: true });
       case 'deleteuser': {
         const name = clean(b.username, 16);

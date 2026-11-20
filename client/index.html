@@ -171,6 +171,20 @@
         <div id="s-quality-row" class="hidden">Graphics quality
           <div class="toggle" id="s-quality"></div></div>
       </div>
+      <div class="set-account">
+        <b>🔑 Change password</b>
+        <div id="pw-note" class="pw-note hidden">An admin gave you a temporary password. Please pick your own now.</div>
+        <input type="password" id="pw-old" placeholder="Current password" autocomplete="current-password" maxlength="200">
+        <input type="password" id="pw-new" placeholder="New password (6+ characters)" autocomplete="new-password" maxlength="200">
+        <button id="pw-save">Change password</button>
+        <div id="pw-msg" class="error"></div>
+        <b>📧 Change email</b>
+        <input type="email" id="em-new" placeholder="New email" autocomplete="email" maxlength="200">
+        <input type="password" id="em-pass" placeholder="Your password" autocomplete="current-password" maxlength="200">
+        <button id="em-save">Change email</button>
+        <div id="em-msg" class="error"></div>
+        <small style="opacity:.7">Your email stays private: it's scrambled so nobody can read it, not even the admin.</small>
+      </div>
       <button id="settings-close" class="big">DONE</button>
     </div>
   </div>
@@ -357,6 +371,10 @@
         <b>🏈 Gift Ball Bucks</b>
         <div class="ad-row"><input id="ad-user" placeholder="Username (* = everyone online)" maxlength="16"><input id="ad-amt" type="number" value="500" min="1" max="100000" style="max-width:80px"></div>
         <button data-act="gift">🎁 Gift</button>
+      </div>
+      <div class="ad-sec">
+        <b>🔑 Forgot password</b>
+        <div class="ad-row"><input id="ad-pwuser" placeholder="Username" maxlength="16"><button data-act="resetpw">Reset</button></div>
       </div>
       <div class="ad-row"><button data-act="stats" class="ad-ghost">📊 Who's online?</button><a href="/admin" target="_blank" class="ad-link">Full admin panel ↗</a></div>
       <div id="ad-status"></div>

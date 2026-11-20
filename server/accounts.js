@@ -112,7 +112,7 @@ export function createAccounts(root) {
       return u;
     },
     logout(token) { delete db.sessions[tokenHash(token)]; save(); },
-    publicView(u) { return { username: u.username, bucks: u.bucks, owned: u.owned, stats: u.stats, isAdmin: !!u.isAdmin }; },
+    publicView(u) { return { username: u.username, bucks: u.bucks, owned: u.owned, stats: u.stats, isAdmin: !!u.isAdmin, mustChangePw: !!u.mustChangePw }; },
     setAdmin(username, on) { const u = byUsername(username); if (!u) return false; u.isAdmin = !!on; save(); return u; },
     award(u, amount, stat) {
       if (!u) return;
@@ -138,6 +138,48 @@ export function createAccounts(root) {
       if (!(await checkPw(user, password))) { fail(key); fail('ip:' + ip); return { error: 'Wrong password.' }; }
       if (!db.users[user.id]) return { error: 'No account.' };
       removeUser(user);
+      return { ok: true };
+    },
+    // admin gives a player a temporary password (the old one stops working, all their devices sign out)
+    async adminResetPassword(username) {
+      const u = byUsername(String(username || '').trim());
+      if (!u) return null;
+      const W = ['BLITZ', 'PYLON', 'HUDDLE', 'SPIRAL', 'KICKOFF', 'ENDZONE', 'TURF', 'ROOKIE', 'GRIDIRON', 'SNAP', 'PUNT', 'TACKLE'];
+      const temp = `${W[crypto.randomInt(W.length)]}-${crypto.randomInt(1000, 10000)}-${W[crypto.randomInt(W.length)]}`;
+      u.salt = crypto.randomBytes(16).toString('hex');
+      u.pwHash = await hashPw(temp, u.salt);
+      u.mustChangePw = true;
+      for (const [k, s] of Object.entries(db.sessions)) if (s.id === u.id) delete db.sessions[k];
+      store.save(); store.flush();
+      return { user: u, temp };
+    },
+    // a signed-in player changes their email (needs their password); only the scrambled hash is stored
+    async changeEmail(user, password, newEmail, ip) {
+      if (!user || !db.users[user.id]) return { error: 'No account.' };
+      newEmail = String(newEmail || '').trim();
+      const key = 'acct:' + user.id;
+      if (locked(key) || locked('ip:' + ip)) return { error: 'Too many wrong tries. Wait a minute and try again.' };
+      if (!EMAIL.test(newEmail)) return { error: 'That email does not look right.' };
+      if (!(await checkPw(user, password))) { fail(key); fail('ip:' + ip); return { error: 'Wrong password.' }; }
+      const other = byEmail(newEmail);
+      if (other && other !== user) return { error: 'That email already has another account.' };
+      user.emailHash = emailHash(newEmail);
+      store.save(); store.flush();
+      return { ok: true };
+    },
+    // a signed-in player changes their own password (needs the current one)
+    async changePassword(user, oldPw, newPw, ip) {
+      if (!user || !db.users[user.id]) return { error: 'No account.' };
+      newPw = String(newPw || '');
+      const key = 'acct:' + user.id;
+      if (locked(key) || locked('ip:' + ip)) return { error: 'Too many wrong tries. Wait a minute and try again.' };
+      if (!(await checkPw(user, oldPw))) { fail(key); fail('ip:' + ip); return { error: 'Your current password is not right.' }; }
+      if (newPw.length < 6 || newPw.length > 200) return { error: 'New passwords need at least 6 characters.' };
+      if (newPw.toLowerCase() === user.usernameLower) return { error: 'Your password can not be your username.' };
+      user.salt = crypto.randomBytes(16).toString('hex');
+      user.pwHash = await hashPw(newPw, user.salt);
+      delete user.mustChangePw;
+      store.save(); store.flush();
       return { ok: true };
     },
     // admin deletes an account by username

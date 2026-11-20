@@ -120,6 +120,11 @@ const hub = {
     for (const c of clients) send(c, msg);
     return m.code;
   },
+  async resetPassword(username) {
+    const r = await accounts.adminResetPassword(username);
+    if (r) signOutEverywhere(r.user, 'An admin reset your password. Log in with the temporary password they give you.');
+    return r;
+  },
   deleteUser(username) {
     const u = accounts.adminDelete(username);
     if (u) signOutEverywhere(u, 'This account was deleted.');
@@ -151,6 +156,16 @@ const hub = {
         if (!Number.isFinite(amount) || amount < 1 || amount > 100000) return reply('Pick an amount from 1 to 100,000', false);
         const n = hub.gift(m.name === '*' ? '*' : text(m.name, 16), amount);
         return n ? reply(`🎁 Gifted ${amount} Ball Bucks to ${n} player${n === 1 ? '' : 's'}`) : reply('No player with that username', false);
+      }
+      case 'resetpw': {
+        const name = text(m.name, 16);
+        if (!name) return reply('Type a username first', false);
+        hub.resetPassword(name).then((r) => {
+          if (!r) return reply('No player with that username', false);
+          console.log(`admin ${c.name} reset the password of ${r.user.username}`);
+          reply(`🔑 ${r.user.username}'s temporary password: ${r.temp}  (they change it in ⚙️ Settings)`);
+        }).catch(() => reply('Something went wrong. Try again.', false));
+        return;
       }
       case 'stats': {
         const st = hub.stats();
@@ -351,6 +366,29 @@ function handleMessage(c, m, ip) {
           console.log(`account ${u.username} deleted by its owner`);
           signOutEverywhere(u, 'Your account and everything in it was deleted. Bye for now!');
         }).catch((e) => { console.error('delete error', e); send(c, { t: 'delete_error', msg: 'Something went wrong. Try again.' }); })
+          .finally(() => { c.authBusy = false; authInFlight--; });
+        return;
+      }
+      case 'change_password': {
+        if (c.authBusy) return;
+        if (typeof m.old !== 'string' || typeof m.new !== 'string') return send(c, { t: 'pw_result', ok: false, msg: 'Fill in both boxes.' });
+        if (!authLimiter.allow(ip)) return send(c, { t: 'pw_result', ok: false, msg: 'Too many tries. Wait a minute.' });
+        c.authBusy = true; authInFlight++;
+        accounts.changePassword(c.profile, m.old.slice(0, 300), m.new.slice(0, 300), ip).then((r) => {
+          send(c, r.error ? { t: 'pw_result', ok: false, msg: r.error } : { t: 'pw_result', ok: true, msg: 'Password changed! ✅' });
+          if (!r.error) sendProfile(c);
+        }).catch(() => send(c, { t: 'pw_result', ok: false, msg: 'Something went wrong. Try again.' }))
+          .finally(() => { c.authBusy = false; authInFlight--; });
+        return;
+      }
+      case 'change_email': {
+        if (c.authBusy) return;
+        if (typeof m.email !== 'string' || typeof m.password !== 'string') return send(c, { t: 'email_result', ok: false, msg: 'Fill in both boxes.' });
+        if (!authLimiter.allow(ip)) return send(c, { t: 'email_result', ok: false, msg: 'Too many tries. Wait a minute.' });
+        c.authBusy = true; authInFlight++;
+        accounts.changeEmail(c.profile, m.password.slice(0, 300), m.email.slice(0, 300), ip).then((r) => {
+          send(c, r.error ? { t: 'email_result', ok: false, msg: r.error } : { t: 'email_result', ok: true, msg: 'Email changed! ✅ Use it to log in next time.' });
+        }).catch(() => send(c, { t: 'email_result', ok: false, msg: 'Something went wrong. Try again.' }))
           .finally(() => { c.authBusy = false; authInFlight--; });
         return;
       }

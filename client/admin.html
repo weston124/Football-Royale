@@ -83,6 +83,7 @@
       <h2>👥 Players (<span id="acct-count">0</span>)</h2>
       <p style="margin:0;color:var(--muted);font-size:13px">Usernames only. Emails and passwords are locked away and can't be seen by anyone. 👑 Admins get a drop-down menu inside the game to run parties, messages and gifts.</p>
       <input id="acct-search" placeholder="Search usernames…">
+      <div class="msg" id="acct-msg" style="color:var(--text)"></div>
       <div class="list" id="acct-list"></div>
     </section>
 
@@ -142,7 +143,7 @@
       const q = $('acct-search').value.trim().toLowerCase();
       $('acct-count').textContent = lastAccounts.length;
       $('acct-list').innerHTML = lastAccounts.filter((a) => a.username.toLowerCase().includes(q)).slice(0, 200).map((a) =>
-        `<div class="item"><span>${lastOnline.has(a.username) ? '🟢' : '⚪'} <b>${esc(a.username)}</b>${a.isAdmin ? ' 👑' : ''}<br><small>🏈 ${a.bucks} · 🏆 ${a.wins} · elims ${a.kills} · joined ${new Date(a.created).toLocaleDateString()}</small></span><span style="flex:0;display:flex;gap:4px"><button class="ghost" style="white-space:nowrap" data-admin="${esc(a.username)}" data-on="${a.isAdmin ? 0 : 1}">${a.isAdmin ? 'Remove admin' : '👑 Make admin'}</button><button class="ghost" title="Delete this account forever" data-deluser="${esc(a.username)}">🗑️</button></span></div>`).join('') || '<small style="color:var(--muted)">No players yet.</small>';
+        `<div class="item"><span>${lastOnline.has(a.username) ? '🟢' : '⚪'} <b>${esc(a.username)}</b>${a.isAdmin ? ' 👑' : ''}<br><small>🏈 ${a.bucks} · 🏆 ${a.wins} · elims ${a.kills} · joined ${new Date(a.created).toLocaleDateString()}</small></span><span style="flex:0;display:flex;gap:4px"><button class="ghost" style="white-space:nowrap" data-admin="${esc(a.username)}" data-on="${a.isAdmin ? 0 : 1}">${a.isAdmin ? 'Remove admin' : '👑 Make admin'}</button><button class="ghost" title="Give this player a temporary password" data-resetpw="${esc(a.username)}">🔑</button><button class="ghost" title="Delete this account forever" data-deluser="${esc(a.username)}">🗑️</button></span></div>`).join('') || '<small style="color:var(--muted)">No players yet.</small>';
     }
 
     async function api(action, body) {
@@ -201,6 +202,15 @@
     }
     $('acct-search').oninput = renderAccounts;
     $('acct-list').onclick = async (e) => {
+      const rp = e.target.closest('button[data-resetpw]');
+      if (rp) {
+        if (!confirm(`Give ${rp.dataset.resetpw} a temporary password? Their old password will stop working.`)) return;
+        try {
+          const r = await api('resetpw', { username: rp.dataset.resetpw });
+          $('acct-msg').innerHTML = `🔑 <b>${esc(r.username)}</b>'s temporary password: <code style="font-size:16px;background:#0b1530;padding:2px 8px;border-radius:6px;user-select:all">${esc(r.temp)}</code><br><small>Give it to them. They log in with it, then change it in ⚙️ Settings.</small>`;
+        } catch (err) { if (err.message !== 'auth') $('acct-msg').textContent = err.message; }
+        return;
+      }
       const d = e.target.closest('button[data-deluser]');
       if (d) {
         const name = d.dataset.deluser;

@@ -314,12 +314,17 @@ $('auth-form').onsubmit = (e) => {
   if (authMode === 'login') net.send({ t: 'login', login: $('a-user').value, password: $('a-pass').value });
   else net.send({ t: 'signup', email: $('a-email').value, username: $('a-user').value, password: $('a-pass').value, ageOk: $('a-age').checked });
 };
+let signOutReason = '';
+net.on('account_deleted', (m) => { signOutReason = m.msg || ''; });
 net.on('auth_needed', () => {
+  const wasSignedIn = signedIn;
   signedIn = false;
   store.set('fr_session', null);
   if (game) { game.destroy(); game = null; }
-  for (const id of ['menu', 'lobby', 'loading', 'shop']) $(id).classList.add('hidden');
-  setAuthMode(authMode);
+  for (const id of ['menu', 'lobby', 'loading', 'shop', 'settings']) $(id).classList.add('hidden');
+  $('admin-menu').classList.add('hidden');
+  setAuthMode(wasSignedIn ? 'login' : authMode); // signed out (or password reset): go straight to Log in
+  if (signOutReason) { $('auth-error').textContent = signOutReason; signOutReason = ''; }
   $('auth').classList.remove('hidden');
 });
 net.on('auth', (m) => {
@@ -347,6 +352,7 @@ $('admin-drop').onclick = (e) => {
   else if (act === 'broadcast') { net.send({ t: 'admin', action: 'broadcast', text: $('ad-msg').value, style: $('ad-style').value }); $('ad-msg').value = ''; }
   else if (act === 'gift') net.send({ t: 'admin', action: 'gift', name: $('ad-user').value.trim(), amount: +$('ad-amt').value });
   else if (act === 'stats') net.send({ t: 'admin', action: 'stats' });
+  else if (act === 'resetpw') { const n = $('ad-pwuser').value.trim(); if (n && confirm(`Give ${n.toUpperCase()} a temporary password? Their old password will stop working.`)) net.send({ t: 'admin', action: 'resetpw', name: n }); }
 };
 net.on('admin_ok', (m) => { $('ad-status').textContent = m.msg; $('ad-status').className = m.ok ? '' : 'err'; });
 const setMode = (m) => { profile.mode = m; [...$('mode').children].forEach((b) => b.classList.toggle('on', b.dataset.v === m)); updateQuickSub(); };
@@ -562,6 +568,7 @@ function confettiLoop(t) {
 
 // ---------- Ball Bucks & the Longhorn Item Shop ----------
 net.on('profile', (m) => {
+  nudgePasswordChange(m);
   $('me-name').textContent = m.username + (m.isAdmin ? ' 👑' : '');
   $('admin-menu').classList.toggle('hidden', !m.isAdmin);
   if (!signedIn) { signedIn = true; $('auth').classList.add('hidden'); if (!game && $('lobby').classList.contains('hidden')) showScreen('menu'); }
@@ -683,6 +690,32 @@ function openSettings() { initAudio(); syncSettingsUI(); $('settings').classList
 $('open-settings').onclick = openSettings;
 $('pause-settings').onclick = openSettings;
 $('settings-close').onclick = () => $('settings').classList.add('hidden');
+// change password
+$('pw-save').onclick = () => {
+  $('pw-msg').className = 'error'; $('pw-msg').textContent = '';
+  if (!$('pw-old').value || !$('pw-new').value) { $('pw-msg').textContent = 'Fill in both boxes.'; return; }
+  net.send({ t: 'change_password', old: $('pw-old').value, new: $('pw-new').value });
+};
+$('em-save').onclick = () => {
+  $('em-msg').className = 'error'; $('em-msg').textContent = '';
+  if (!$('em-new').value || !$('em-pass').value) { $('em-msg').textContent = 'Fill in both boxes.'; return; }
+  net.send({ t: 'change_email', email: $('em-new').value, password: $('em-pass').value });
+};
+net.on('email_result', (m) => {
+  $('em-msg').textContent = m.msg;
+  $('em-msg').className = m.ok ? 'error ok' : 'error';
+  if (m.ok) { $('em-new').value = ''; $('em-pass').value = ''; }
+});
+net.on('pw_result', (m) => {
+  $('pw-msg').textContent = m.msg;
+  $('pw-msg').className = m.ok ? 'error ok' : 'error';
+  if (m.ok) { $('pw-old').value = ''; $('pw-new').value = ''; $('pw-note').classList.add('hidden'); }
+});
+let pwNudged = false;
+function nudgePasswordChange(m) {
+  $('pw-note').classList.toggle('hidden', !m.mustChangePw);
+  if (m.mustChangePw && !pwNudged && !game) { pwNudged = true; openSettings(); }
+}
 $('settings').onclick = (e) => { if (e.target === $('settings')) $('settings').classList.add('hidden'); };
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('settings').classList.contains('hidden')) $('settings').classList.add('hidden'); });
 // Graphics quality: hooks into client/js/quality.js (setQuality/getQuality) when that module is present.

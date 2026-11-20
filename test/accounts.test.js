@@ -67,3 +67,34 @@ test('usernames can have single spaces, and ADMIN_USERS become admins', async ()
   assert.ok(other.user && !other.user.isAdmin);
   delete process.env.ADMIN_USERS;
 });
+
+test('admin password reset gives a temporary password, then the player changes it', async () => {
+  const { ac } = fresh();
+  const s = await ac.signup({ email: 'forgot@test.dev', username: 'Forgetful', password: 'oldpass1', ageOk: true }, '1');
+  const r = await ac.adminResetPassword('forgetful');
+  assert.match(r.temp, /^[A-Z]+-\d{4}-[A-Z]+$/);
+  assert.equal(ac.resume(s.token), null, 'old sessions are signed out');
+  assert.ok((await ac.login({ login: 'FORGETFUL', password: 'oldpass1' }, '2')).error, 'old password stops working');
+  const li = await ac.login({ login: 'FORGETFUL', password: r.temp }, '2');
+  assert.ok(li.user, 'temporary password works');
+  assert.equal(ac.publicView(li.user).mustChangePw, true);
+  assert.match((await ac.changePassword(li.user, 'wrong', 'newpass9', '2')).error, /current password/);
+  assert.match((await ac.changePassword(li.user, r.temp, '123', '2')).error, /6 characters/);
+  assert.ok((await ac.changePassword(li.user, r.temp, 'newpass9', '2')).ok);
+  assert.equal(ac.publicView(li.user).mustChangePw, false);
+  assert.ok((await ac.login({ login: 'FORGETFUL', password: 'newpass9' }, '3')).user, 'new password works');
+  assert.equal(await ac.adminResetPassword('NOBODY'), null);
+  assert.ok(!JSON.stringify(ac.adminList()).includes(r.temp), 'temporary password is not stored readably');
+});
+
+test('a player can change their email (needs their password)', async () => {
+  const { ac } = fresh();
+  const a = (await ac.signup({ email: 'old@test.dev', username: 'Mover', password: 'secret12', ageOk: true }, '1')).user;
+  await ac.signup({ email: 'taken@test.dev', username: 'Other', password: 'secret12', ageOk: true }, '1');
+  assert.match((await ac.changeEmail(a, 'wrongpw', 'new@test.dev', '1')).error, /Wrong password/);
+  assert.match((await ac.changeEmail(a, 'secret12', 'nope', '1')).error, /does not look right/);
+  assert.match((await ac.changeEmail(a, 'secret12', 'taken@test.dev', '1')).error, /another account/);
+  assert.ok((await ac.changeEmail(a, 'secret12', 'New@Test.dev', '1')).ok);
+  assert.ok((await ac.login({ login: 'new@test.dev', password: 'secret12' }, '2')).user, 'logs in with the new email');
+  assert.ok((await ac.login({ login: 'old@test.dev', password: 'secret12' }, '2')).error, 'old email no longer works');
+});

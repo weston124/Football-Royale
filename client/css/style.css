@@ -472,3 +472,12 @@ html.touch-on.in-match #admin-drop { max-height: calc(100vh - 110px); }
 
 /* coach tips sit above the joystick on touch devices */
 html.touch-on #tip { left: 50%; transform: translateX(-50%); bottom: auto; top: 70px; width: min(420px, 70vw); }
+
+/* ===== change password (settings) ===== */
+.set-account { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.15); text-align: left; }
+.set-account input { width: 100%; }
+.pw-note { background: rgba(255,204,51,.15); border: 1px solid #ffcc33; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+#pw-msg.ok, #em-msg.ok { color: #7dff9a; }
+
+/* hide the admin button while Settings is open */
+body:has(#settings:not(.hidden)) #admin-menu { display: none; }
