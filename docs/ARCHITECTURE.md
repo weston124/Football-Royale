@@ -26,7 +26,8 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs, vehicle spots) |
 | `shared/vehicles.js` | Vehicle types (Tailgate Truck, Sideline Cart), spawn list per match kind, arcade car physics `stepVehicle`, collision footprint |
 | `shared/weapons.js` | Weapons (5 rarities), consumables, damage |
-| `shared/skins.js` | Outfit presets, Longhorn Item Shop, emotes, Ball Bucks rewards, `sanitizeSkin` |
+| `shared/skins.js` | Outfit presets, Longhorn Item Shop (`SHOP`), Daily Shop pool (`DAILY_POOL`), emotes, Ball Bucks rewards, `sanitizeSkin` |
+| `shared/shop.js` | ⭐ Daily Item Shop rotation: `dailyShop(dateKey, forced)` (seeded by the UTC date), `utcDateKey`, `nextResetAt` |
 | `server/index.js` | HTTP static server, WebSocket hub, rooms, friend squads, admin hub actions |
 | `server/match.js` | One match: authoritative rules (movement validation, hitscan w/ lag compensation, projectiles, loot, storm, building, death, win, rewards) |
 | `server/bots.js` | Bot AI |
@@ -34,7 +35,7 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `server/accounts.js` | Accounts: username (ALL CAPS), email stored only as HMAC hash, scrypt passwords, sessions, Ball Bucks |
 | `server/static.js`, `server/net.js` | Static files (CSP, gzip/brotli, ETag caching, versioned `/vendor/three@x/`), client IP + rate limiter helpers |
 | `server/safefile.js` | Atomic JSON saves, rolling backups, corrupt-file recovery (used for `accounts.json`, `admin.json`) |
-| `server/admin.js` | `/admin` panel API (password `ADMIN_PASSWORD`), news, broadcasts, scheduled parties |
+| `server/admin.js` | `/admin` panel API (password `ADMIN_PASSWORD`), news, broadcasts, scheduled parties, today's Daily Shop (`todayShop()`, admin-featured items) |
 | `client/index.html`, `client/css/style.css` | All screens: sign-in, Locker Room menu, lobby, HUD, shop, overlays |
 | `client/js/main.js` | Menu/Locker Room, auth, shop, squads, admin drop-down, party popups, starts `Game` |
 | `client/js/game.js` | In-match client: input, local movement prediction, interpolation, shooting, building, emotes, camera, HUD updates |
@@ -57,7 +58,7 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 Client → server: `hello{token,skin}`, `signup`, `login`, `logout`, `join{create|room|mode}`, `start`, `leave`,
 `in{x,y,z,yaw,pitch,em,ph}` (20 Hz), `jump`, `deploy`, `fire{aim,dirs,rt}`, `reload`, `slot{i}`, `pickup{id}`,
 `open{id}`, `drop`, `build{k,gx,gy,gz,r}`, `veh{id}` (get in vehicle `id`; `veh{}` gets out), `buy{item}`, `delete_account{password}`, `spec{id}` (dead player: who they spectate), `party_*`, `admin{action}`.
-Server → client: `auth`, `auth_needed`, `profile`, `welcome`, `lobby`, `start`, `s` (20 Hz snapshot: `ps` player
+Server → client: `info{news,events,shop}` (on connect and whenever it changes), `auth`, `auth_needed`, `profile`, `bought{item}`, `welcome`, `lobby`, `start`, `s` (20 Hz snapshot: `ps` player
 entries, `pg` players to forget, `ev` events, `zn` zone, `me` private state, `pe` personal events), `end`, `closed`, `reward`, `bc`, `party_time`, `account_deleted`, `delete_error`, `error`.
 Pages must keep working under the CSP: no inline `on*=` handlers and no `eval`; inline `<script>` blocks are allowed
 automatically (the server hashes them), inline styles are fine.
@@ -88,6 +89,24 @@ first snapshot has all of them, parked vehicles cost nothing. Clients interpolat
   per target; Party Island: a bump, no damage. Bullets/tackles/explosions damage vehicles (truck 450, cart 260 hp);
   at 0 hp it breaks down (`ev ['vb', id]`, smoke, can't be driven). Drivers sit up high: their head/chest can
   be shot over the vehicle box, and they take storm and explosion damage normally.
+
+## Item shops and Ball Bucks
+Two shops, one screen (`#shop`, tabs; the Daily Shop is the default tab). Prices: every item costs 1,000+ Ball Bucks.
+- **🐂 Longhorn Item Shop**: `SHOP` in `shared/skins.js` (presets/emotes with `price` and no `shop` field). Always for sale.
+- **⭐ Daily Item Shop**: `DAILY_POOL` = presets/emotes with `shop: 'daily'` (14 outfits, 5 emotes, 1,000-2,500).
+  `dailyShop(utcDate)` shuffles the pool with `makeRng(FNV-1a('football-royale-daily|YYYY-MM-DD'))` and picks
+  2 Featured (Epic/Legendary outfits) + 3 outfits + 2 emotes, so every server and player gets the same shop; it changes
+  at 00:00 UTC. The server sends it in `info.shop = {date, resetsAt, now, featured:[id], items:[id]}` (ids index
+  `DAILY_POOL`; `now` lets the client's countdown follow the server clock) and pushes a new `info` at midnight.
+- `buy{item}` → `accounts.buy(user, id, admin.todayShop())`: Longhorn items always, Daily items only while in today's
+  shop (`featured` or `items`), otherwise an `error`. Owned ids live in `profile.owned` forever; `canUseSkin` /
+  `canUseEmote` only check ownership, so items stay wearable after they rotate out.
+- Admin: `/admin/api/feature {item, remove?}` adds (or removes) a `DAILY_POOL` item to today's Featured row (max 3 a
+  day, stored in `admin.json` `featured:{date, ids}`, ignored after that date); `state` returns `shop`, `forced`, `shopPool`.
+- Outfit `style` options drawn by `human.js`: `bolts`, `towel`, `crowns`, `pads`, `crewSocks`, `armSleeve`,
+  `whiteNumbers`, `cleats`, `referee`, plus `yoke` (shoulders in the accent color) and `hoops` (two accent bands).
+  Emotes 9-13 (Spin Move, Air Guitar, Sprinkler, Chest Flex, Wave Ripple) are animated in `animatePlayer`.
+- Real-money Ball Bucks packs are disabled ("Coming soon"); Ball Bucks come from matches and admin gifts.
 
 ## Graphics quality (client/js/quality.js)
 `setQuality('auto'|'low'|'medium'|'high')`, `getQuality()`, `getQualityInfo()`, `onQualityChange(fn)`; also on

@@ -538,6 +538,56 @@ export function animatePlayer(model, s, dt) {
         else { lL = 0.8; kL = -1.0; lR = -0.6; kR = -0.4; sx = -0.8; aL = 0.9; aR = -0.9; }
         break;
       }
+      // ---------- Daily Item Shop emotes ----------
+      case 9: { // Spin Move: two quick spins on one foot, then arms out wide
+        const k = Math.min(1, Math.max(0, (e - 0.15) / 1.1)), sk = Math.sin(k * PI);
+        by = k * k * (3 - 2 * k) * PI * 4;
+        if (k < 1) {
+          aL = aR = 0.35; aLz = -0.3; aRz = 0.3; eL = eR = 2.0;
+          lL = 0.55 * sk; kL = -1.1 * sk; lLz = -0.1; bodyY += sk * 0.07;
+        } else {
+          const pop = Math.min(1, (e - 1.25) / 0.2);
+          aL = aR = 0.2; aLz = -0.25 - 1.1 * pop; aRz = 0.25 + 1.1 * pop; eL = eR = 0.15;
+          lLz = -0.18; lRz = 0.18; hx = -0.15; sx = 0.05;
+        }
+        break;
+      }
+      case 10: { // Air Guitar: lean back, strum hard, nod to the beat
+        sx = 0.18; hx = 0.18 + Math.sin(e * 7) * 0.22;
+        aL = 1.25; aLz = -0.55; eL = 0.45; aLy = 0.3;              // left hand on the guitar neck
+        aR = 0.55; aRz = -0.15; aRy = -0.5; eR = 1.35 + Math.sin(e * 16) * 0.35;  // right hand strums
+        lLz = -0.22; lRz = 0.22; kL = kR = -0.35; bodyY -= 0.04;
+        bodyY += Math.max(0, Math.sin(e * 3.5)) * 0.03; sy = Math.sin(e * 3.5) * 0.12;
+        break;
+      }
+      case 11: { // Sprinkler: hand behind the head, the other arm sweeps across in clicks
+        const ph = (e * 0.8) % 2;
+        by = ph < 1 ? -0.75 + Math.floor(ph * 7) / 6 * 1.5 : 0.75 - (ph - 1) * 1.5;
+        aL = PI - 0.4; aLz = -0.5; eL = 2.3;                       // left hand behind the head
+        aR = PI / 2; aRz = 0.05; eR = 0.05;                        // right arm straight out
+        kL = kR = -0.2 - Math.abs(Math.sin(e * 12)) * 0.12; bodyY -= Math.abs(Math.sin(e * 12)) * 0.02;
+        hy = -by * 0.3;
+        break;
+      }
+      case 12: { // Chest Flex: double biceps, then a big crunch flex
+        const ph = e % 3, pump = Math.abs(Math.sin(e * 6)) * 0.12;
+        if (ph < 1.5) {
+          aL = aR = PI / 2 + 0.15; aLz = -1.05; aRz = 1.05; eL = eR = 1.8 + pump; hx = -0.12;
+        } else {
+          aL = aR = 0.45; aLz = -0.35; aRz = 0.35; eL = eR = 1.9 + pump; sx = -0.22; hx = -0.2;
+        }
+        lLz = -0.16; lRz = 0.16; kL = kR = -0.12; bodyY += Math.sin(e * 6) * 0.01;
+        break;
+      }
+      case 13: { // Wave Ripple: a wave rolls from one hand, through the body, to the other hand
+        const ph = e * 3.2;
+        aL = aR = 0.1;
+        aLz = -1.35 - Math.sin(ph) * 0.4; aRz = 1.35 + Math.sin(ph - 2.2) * 0.4;
+        eL = 0.35 + Math.sin(ph + 0.9) * 0.35; eR = 0.35 + Math.sin(ph - 1.3) * 0.35;
+        bz = Math.sin(ph - 1.1) * 0.12; hy = Math.sin(ph - 1.1) * 0.2;
+        bodyY += Math.sin(ph * 2) * 0.025; kL = kR = -0.15 - Math.max(0, Math.sin(ph * 2)) * 0.15;
+        break;
+      }
     }
   } else {
     // walking / running

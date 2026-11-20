@@ -186,13 +186,13 @@ export class Game {
     $('res-again').onclick = () => { this.leave(); if (this.onPlayAgain) this.onPlayAgain(); };
     $('res-share').onclick = () => this.onShare && this.onShare(this.shareInfo());
     // emote buttons
-    $('emotes').innerHTML = this.myEmotes.map((e, i) => `<button data-e="${e.id}"><b>${i + 1}</b><br>${e.name}${e.price ? ' 🐂' : ''}</button>`).join('');
+    $('emotes').innerHTML = this.myEmotes.map((e, i) => `<button data-e="${e.id}"><b>${i < 10 ? (i + 1) % 10 : ''}</b><br>${e.name}${e.shop === 'daily' ? ' ⭐' : e.price ? ' 🐂' : ''}</button>`).join('');
     $('emotes').onclick = (ev) => { const b = ev.target.closest('button'); if (b) this.startEmote(+b.dataset.e); };
   }
 
   onKey(code) {
     if (this.emoteMenu) {
-      const n = code.startsWith('Digit') ? +code.slice(5) : 0;
+      const n = code === 'Digit0' ? 10 : code.startsWith('Digit') ? +code.slice(5) : 0;
       if (n >= 1 && n <= this.myEmotes.length) this.startEmote(this.myEmotes[n - 1].id);
       if (code === 'KeyG' || code === 'Escape') this.toggleEmoteMenu(false);
       return;

@@ -86,7 +86,7 @@
     <div class="menu-right">
       <div class="topbar">
         <span class="bucks">🏈 <b id="bucks">0</b></span>
-        <button id="open-shop">🐂 ITEM SHOP</button>
+        <button id="open-shop">⭐ ITEM SHOP</button>
         <button id="music-toggle" class="icon-btn" title="Menu music on/off" aria-label="Menu music on/off">🎵</button>
         <button id="open-settings" class="icon-btn" title="Settings" aria-label="Settings">⚙️</button>
       </div>
@@ -319,15 +319,32 @@
     </div>
   </div>
 
-  <!-- ===== LONGHORN ITEM SHOP ===== -->
-  <div id="shop" class="screen hidden">
+  <!-- ===== ITEM SHOP: ⭐ Daily Shop (changes every day) + 🐂 Longhorn Item Shop ===== -->
+  <div id="shop" class="screen hidden daily">
     <div class="shop-panel">
-      <div class="shop-head">
-        <h2>🐂 LONGHORN ITEM SHOP</h2>
+      <div class="shop-top">
+        <div class="shop-tabs" id="shop-tabs" role="tablist">
+          <button data-shop="daily" class="on" role="tab">⭐ Daily Shop</button>
+          <button data-shop="longhorn" role="tab">🐂 Longhorn Shop</button>
+        </div>
         <span class="bucks">🏈 <b id="shop-bucks">0</b> Ball Bucks</span>
         <button id="close-shop">✖ Close</button>
       </div>
-      <div id="shop-items" class="shop-items"></div>
+      <div class="shop-pane" data-pane="daily">
+        <div class="shop-head daily-head">
+          <h2>⭐ DAILY ITEM SHOP</h2>
+          <div class="daily-timer">⏰ New items in <b id="daily-cd">--</b></div>
+        </div>
+        <div id="daily-featured" class="daily-featured"></div>
+        <h3 class="daily-sub">Today's Items</h3>
+        <div id="daily-items" class="shop-items"></div>
+      </div>
+      <div class="shop-pane hidden" data-pane="longhorn">
+        <div class="shop-head">
+          <h2>🐂 LONGHORN ITEM SHOP</h2>
+        </div>
+        <div id="shop-items" class="shop-items"></div>
+      </div>
       <div class="shop-foot">
         <div class="earn">
           <h3>How to earn Ball Bucks (free)</h3>
