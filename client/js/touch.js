@@ -133,9 +133,34 @@ class TouchControls {
       if (!s) return;
       e.preventDefault();
       const i = [...$('hotbar').children].indexOf(s);
+      if ($('hotbar').classList.contains('big')) { // scrolling strip: drag to scroll, tap to pick
+        const t = e.changedTouches[0];
+        this.hotDrag = { id: t.identifier, x: t.clientX, left: $('hotbar').scrollLeft, i, moved: false };
+        return;
+      }
       if (i >= 0 && !this.g.dead) { this.g.selectSlot(i); this.g.mouse.right = false; }
     };
+    this.hotbarMove = (e) => {
+      const d = this.hotDrag; if (!d) return;
+      for (const t of e.changedTouches) if (t.identifier === d.id) {
+        e.preventDefault();
+        const dx = t.clientX - d.x;
+        if (Math.abs(dx) > 8) d.moved = true;
+        if (d.moved) { $('hotbar').scrollLeft = d.left - dx; this.g.hud.hotUserScroll = performance.now(); }
+      }
+    };
+    this.hotbarEnd = (e) => {
+      const d = this.hotDrag; if (!d) return;
+      for (const t of e.changedTouches) if (t.identifier === d.id) {
+        this.hotDrag = null;
+        e.preventDefault();
+        if (!d.moved && d.i >= 0 && this.active && !this.g.dead) { this.g.selectSlot(d.i); this.g.mouse.right = false; }
+      }
+    };
     $('hotbar').addEventListener('touchstart', this.hotbarTap, opt);
+    $('hotbar').addEventListener('touchmove', this.hotbarMove, opt);
+    $('hotbar').addEventListener('touchend', this.hotbarEnd, opt);
+    $('hotbar').addEventListener('touchcancel', this.hotbarEnd, opt);
     // tap the big map to close it
     this.bigmapTap = (e) => { if (this.active && this.g.bigMap) { e.preventDefault(); this.g.onKey('KeyM'); } };
     $('bigmap').addEventListener('touchstart', this.bigmapTap, opt);
@@ -334,6 +359,9 @@ class TouchControls {
     removeEventListener('touchend', this.h.end);
     removeEventListener('touchcancel', this.h.end);
     $('hotbar').removeEventListener('touchstart', this.hotbarTap);
+    $('hotbar').removeEventListener('touchmove', this.hotbarMove);
+    $('hotbar').removeEventListener('touchend', this.hotbarEnd);
+    $('hotbar').removeEventListener('touchcancel', this.hotbarEnd);
     $('bigmap').removeEventListener('touchstart', this.bigmapTap);
     this.obs.disconnect();
     this.release();

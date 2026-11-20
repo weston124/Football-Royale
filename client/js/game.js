@@ -129,7 +129,9 @@ export class Game {
     sfx.reload();
   }
 
-  currentItem() { return this.me.slot === 0 ? { w: 'tackle', r: 0 } : this.me.inv[this.me.slot - 1]; }
+  currentItem() { return this.me.slot === 0 ? { w: 'tackle', r: 0 } : this.me.inv[this.me.slot - 1] || null; }
+  // Tackle + item slots: 6 for everyone, more for admins with the unlimited backpack.
+  slotCount() { return 1 + this.me.inv.length; }
   serverNow() { return nowS() + (this.offset || 0); }
 
   // ---------- input ----------
@@ -160,8 +162,8 @@ export class Game {
       mouseup: (e) => { if (e.button === 0) this.mouse.left = false; if (e.button === 2) this.mouse.right = false; },
       wheel: (e) => {
         if (document.pointerLockElement !== c || this.dead) return;
-        const n = (this.me.slot + (e.deltaY > 0 ? 1 : 5)) % 6;
-        this.selectSlot(n);
+        const N = this.slotCount();
+        this.selectSlot((this.me.slot + (e.deltaY > 0 ? 1 : N - 1)) % N);
       },
       contextmenu: (e) => e.preventDefault(),
       lockchange: () => {
@@ -200,7 +202,7 @@ export class Game {
       if ((code === 'Enter' || code === 'Escape') && $('result').classList.contains('hidden')) $('result').classList.remove('hidden');
       return;
     }
-    if (code.startsWith('Digit')) { const n = +code.slice(5); if (n >= 1 && n <= 6) this.selectSlot(n - 1); }
+    if (code.startsWith('Digit')) this.digitSlot(+code.slice(5));
     switch (code) {
       case 'Space':
         if (this.local.phase === 'blimp') this.net.send({ t: 'jump' });
@@ -217,6 +219,19 @@ export class Game {
         }
         break;
     }
+  }
+
+  // Number keys: 1-6 as always. Big (admin) backpacks: 7-9 and 0 (= 10) too, and pressing the
+  // same digit again jumps ahead by ten (2 -> slot 12 -> slot 22 ...) so every slot is reachable.
+  digitSlot(d) {
+    const N = this.slotCount();
+    const base = d === 0 ? 9 : d - 1;
+    if (N <= 6) { if (d >= 1 && d <= 6) this.selectSlot(base); return; }
+    if (base >= N) return;
+    const cur = this.me.slot;
+    let i = base;
+    if (cur % 10 === base % 10 && cur >= base) { i = cur + 10; if (i >= N) i = base; }
+    this.selectSlot(i);
   }
 
   selectSlot(i) {
