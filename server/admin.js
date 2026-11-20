@@ -4,6 +4,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadJson, jsonStore } from './safefile.js';
 import { clientIp } from './net.js';
+import { DAILY_POOL } from '../shared/skins.js';
+import { dailyShop, dailyItem, utcDateKey, DAILY } from '../shared/shop.js';
 
 export function createAdmin({ root, hub }) {
   const dataDir = process.env.FR_DATA_DIR || path.join(root, 'data');
@@ -46,9 +48,18 @@ export function createAdmin({ root, hub }) {
     return ok;
   }
 
+  // ⭐ Daily Item Shop: the seeded pick for today's UTC date + items an admin featured today
+  const featuredToday = () => {
+    const f = data.featured;
+    return f && f.date === utcDateKey() && Array.isArray(f.ids) ? f.ids.filter((id) => dailyItem(id)) : [];
+  };
+  const todayShop = () => dailyShop(utcDateKey(), featuredToday());
+  let shopDay = utcDateKey();
+
   const publicInfo = () => ({
     news: data.news.slice().sort((a, b) => b.date - a.date).slice(0, 10),
     events: data.events.filter((e) => e.time > Date.now() - 60_000).sort((a, b) => a.time - b.time),
+    shop: { ...todayShop(), now: Date.now() },
   });
 
   // Scheduled parties fire automatically
@@ -61,7 +72,11 @@ export function createAdmin({ root, hub }) {
         hub.globalParty(e.kind, e.title);
       }
     }
-    if (changed) { data.events = data.events.filter((e) => e.time > t - 3600_000); save(); hub.pushInfo(publicInfo()); }
+    if (changed) { data.events = data.events.filter((e) => e.time > t - 3600_000); save(); }
+    // midnight UTC: a new Daily Shop for everyone online
+    const day = utcDateKey(t);
+    if (day !== shopDay) { shopDay = day; changed = true; }
+    if (changed) hub.pushInfo(publicInfo());
   }, 2000);
 
   function readBody(req) {
@@ -84,7 +99,20 @@ export function createAdmin({ root, hub }) {
     const action = url.slice('/admin/api/'.length);
     const b = req.method === 'POST' ? await readBody(req) : {};
     switch (action) {
-      case 'state': return json(200, { ...hub.stats(), ...publicInfo(), allEvents: data.events });
+      case 'state': return json(200, { ...hub.stats(), ...publicInfo(), allEvents: data.events, forced: featuredToday(),
+        shopPool: DAILY_POOL.map((i) => ({ id: i.id, kind: i.kind, name: i.name, price: i.price, rarity: i.rarity })) });
+      case 'feature': { // ⭐ add an item to today's Daily Shop (until midnight UTC); {item, remove}
+        const id = clean(b.item, 64);
+        if (!dailyItem(id)) return json(400, { error: 'Pick an item from the Daily Shop list' });
+        const ids = featuredToday().filter((x) => x !== id);
+        if (!b.remove) {
+          if (ids.length >= DAILY.maxForced) return json(400, { error: `You can feature up to ${DAILY.maxForced} extra items a day` });
+          ids.push(id);
+        }
+        data.featured = { date: utcDateKey(), ids };
+        save(); hub.pushInfo(publicInfo());
+        return json(200, { ok: true, shop: todayShop() });
+      }
       case 'news': {
         if (b.delete) data.news = data.news.filter((n) => n.id !== b.delete);
         else {
@@ -147,5 +175,5 @@ export function createAdmin({ root, hub }) {
       default: return json(404, { error: 'Unknown action' });
     }
   }
-  return { handle, publicInfo, flush: () => store.flush() };
+  return { handle, publicInfo, todayShop, flush: () => store.flush() };
 }
