@@ -10,6 +10,7 @@ import {
   ZONE_START_RADIUS, ZONE_PHASES, BUILD, PICKUP_RANGE, MAP_HALF, BOT_DIFFICULTY,
 } from '../shared/constants.js';
 import { updateBot, BOT_NAMES } from './bots.js';
+import { VehicleSystem } from './vehicles.js';
 import { NFIELDS, KEY_TICKS, quantize, encodeEntry, bandFor, extraDelay } from '../shared/netcodec.js';
 
 const MAP = generateMap();
@@ -18,6 +19,7 @@ const DT = 1 / TICK_RATE;
 let clockFn = () => performance.now() / 1000;
 export const now = () => clockFn();
 export function setClock(fn) { clockFn = fn || (() => performance.now() / 1000); }
+const NO_DRIVING = new Set(['fire', 'reload', 'pickup', 'open', 'drop', 'build']);
 const PHASE_CODE = { ground: 0, blimp: 1, fall: 2, glide: 3, dead: 4 };
 export const WCODES = ['tackle', ...GUN_IDS];
 
@@ -44,6 +46,7 @@ export class Match {
     this.chests = MAP.chests.map((c, i) => ({ id: i, x: c.x, y: c.y, z: c.z, open: false }));
     this.pieces = new Map();
     this.pieceKeys = new Map();
+    this.veh = new VehicleSystem(this, MAP, now); // drivable vehicles (server/vehicles.js)
     this.projectiles = [];
     this.nextId = 1;
     this.events = [];
@@ -106,6 +109,7 @@ export class Match {
 
   removeHuman(p) {
     if (!this.players.has(p.id)) return;
+    if (p.vehicle) this.veh.exit(p);
     if (this.state === 'play' && p.alive) this.kill(p, null, 'quit', false);
     this.players.delete(p.id);
     this.events.push(['rm', p.id]);
@@ -291,6 +295,8 @@ export class Match {
     }
     if (m.t === 'spec') { p.specId = m.id | 0; return; }   // who a dead player watches (interest management)
     if (this.state !== 'play' || !p.alive) return;
+    if (m.t === 'veh') return this.veh.onVeh(p, m);
+    if (p.vehicle && NO_DRIVING.has(m.t)) return; // hands on the wheel
     switch (m.t) {
       case 'in': return this.onInput(p, m);
       case 'jump': if (p.phase === 'blimp' && now() - this.blimp.t0 > DROP.doorsOpen) this.jumpOut(p); return;
@@ -331,6 +337,7 @@ export class Match {
     if (typeof m.pitch === 'number') p.pitch = Math.max(-1.6, Math.min(1.6, m.pitch));
     p.emote = (p.bot ? EMOTES.some((e) => e.id === m.em) : canUseEmote(m.em, p.profile)) ? m.em : 0;
     if (p.phase === 'blimp') return;
+    if (p.vehicle) { p.emote = 0; return this.veh.onDriveInput(p, m); }
     const x = +m.x, y = +m.y, z = +m.z;
     if (![x, y, z].every(Number.isFinite)) return;
     const t = now();
@@ -422,6 +429,7 @@ export class Match {
         const hit = raycastWorld(this.world, ox, oy, oz, aim[0], aim[1], aim[2], 3);
         if (hit && hit.box) {
           if (hit.box.pid) this.damagePiece(hit.box.pid, 50);
+          if (hit.box.vid) this.veh.damage(hit.box.vid, 25);
           if (this.mode === 'build') { p.mats = Math.min(BUILD.maxMats, p.mats + BUILD.harvest); p.pev.push(['mats', BUILD.harvest]); }
         }
       }
@@ -479,6 +487,8 @@ export class Match {
         this.damage(bestQ, dmg, p, it.w, isHead);
       } else if (wh && wh.box && wh.box.pid) {
         this.damagePiece(wh.box.pid, dmgBase);
+      } else if (wh && wh.box && wh.box.vid) {
+        this.veh.damage(wh.box.vid, dmgBase);
       }
     }
     this.events.push(['sh', p.id, code, r2(ox), r2(oy), r2(oz), ...ends]);
@@ -502,6 +512,7 @@ export class Match {
   }
 
   kill(q, by, wid, head) {
+    if (q.vehicle) this.veh.exit(q);
     q.hp = 0; q.alive = false;
     const remaining = this.alive.length;
     q.place = remaining + 1;
@@ -626,7 +637,8 @@ export class Match {
       if (!q.alive || q.phase === 'blimp') continue;
       const d = Math.hypot(q.x - x, q.y + 0.9 - y, q.z - z);
       if (d > pr.splash) continue;
-      if (!lineOfSight(this.world, x, y + 0.2, z, q.x, q.y + 1, q.z)) continue;
+      // drivers sit up high in their vehicle (whose box would otherwise hide them)
+      if (!lineOfSight(this.world, x, y + 0.2, z, q.x, q.y + (q.vehicle ? 1.6 : 1), q.z)) continue;
       let dmg = pr.dmg * (0.35 + 0.65 * (1 - d / pr.splash));
       if (q === owner) dmg *= 0.4;
       const kd = Math.max(0.5, d), kp = (1 - d / pr.splash) * 16;
@@ -635,6 +647,7 @@ export class Match {
       this.damage(q, dmg, owner && owner.alive !== undefined ? owner : null, pr.kind, false);
     }
     if (owner && hitAny) owner.pev.push(['hit', Math.round(hitAny), 0, r2(x), r2(y), r2(z), 0]);
+    this.veh.explode(x, y, z, pr.dmg, pr.splash);
     for (const b of this.world.query(x - pr.splash, z - pr.splash, x + pr.splash, z + pr.splash, [])) {
       if (!b.pid) continue;
       const bx = (b.min[0] + b.max[0]) / 2, by = (b.min[1] + b.max[1]) / 2, bz = (b.min[2] + b.max[2]) / 2;
@@ -852,6 +865,7 @@ export class Match {
         if (Math.abs(l.x - ref.x) < l.r && Math.abs(l.z - ref.z) < l.r) evs.push(localStr[i]);
       }
       let msg = head + ',"ps":[' + parts.join(',') + '],"ev":[' + evs.join(',') + ']';
+      msg += this.veh.snapshotFor(p, ref, tick);
       if (gone.length) msg += ',"pg":[' + gone.join(',') + ']';
       const me = {
         hp: Math.max(0, Math.round(p.hp)), pad: Math.round(p.pad), inv: p.inv, slot: p.slot, mats: p.mats, k: p.kills,
