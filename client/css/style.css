@@ -334,6 +334,8 @@ html.touch-on #hud:not(.hidden) ~ #touch { display: block; }
 #touch.dead #t-jump, #touch.dead #t-aim, #touch.dead #t-reload, #touch.dead #t-use, #touch.dead #t-emote, #touch.dead #t-stick,
 #touch.dead .t-build, #touch.menu #t-fire, #touch.menu #t-aim, #touch.menu #t-reload, #touch.menu #t-jump, #touch.menu #t-stick { display: none !important; }
 #touch.island #t-fire { font-size: 30px !important; }
+/* driving: joystick = gas/steer, JUMP = handbrake, USE = get out */
+#touch.driving #t-fire, #touch.driving #t-aim, #touch.driving #t-reload, #touch.driving .t-build, #touch.driving #t-emote { display: none !important; }
 /* floating joystick: resting ring bottom-left; follows your thumb while held */
 #t-stick { position: absolute; left: calc(110px + var(--sl)); top: calc(100% - 120px - var(--sb)); width: 130px; height: 130px; margin: -65px 0 0 -65px;
   border-radius: 50%; border: 3px solid rgba(255,255,255,.35); background: rgba(10, 20, 50, .25); pointer-events: none; opacity: .6; }

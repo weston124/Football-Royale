@@ -3,6 +3,7 @@
 // pushing into walls. Build pieces are not in the grid (they come and go); bots handle
 // those with their local unstick logic.
 import { PLAYER, MAP_HALF } from '../shared/constants.js';
+import { vehicleSpawns, vehicleBoxes, VEHICLE_TYPES } from '../shared/vehicles.js';
 
 const N = MAP_HALF * 2;          // cells per side (1 m cells)
 const STEP = PLAYER.stepUp + 0.05;
@@ -27,7 +28,10 @@ export function buildNav(map) {
   }
   // 2) blocked = something solid at body height above that floor (player radius included)
   const r = PLAYER.radius + 0.05;
-  for (const b of map.boxes) {
+  // parked vehicles start at fixed spots: path around them (once driven away, bots' unstick
+  // logic handles wherever they end up)
+  const parked = vehicleSpawns(map, 'normal').flatMap((v) => vehicleBoxes({ ...v, y: 0 }, VEHICLE_TYPES[v.type]));
+  for (const b of map.boxes.concat(parked)) {
     if (b.ramp) continue;
     const [x0, x1] = cellRange(b.min[0] - r, b.max[0] + r);
     const [z0, z1] = cellRange(b.min[2] - r, b.max[2] + r);

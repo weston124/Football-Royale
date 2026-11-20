@@ -103,7 +103,7 @@ export class PlayerRenderer {
     for (const e of ents.values()) {
       const s = e.s;
       e.want = 'none';
-      if (!s || s.ph === 4) continue;
+      if (!s || s.ph === 4 || e.inVehicle) continue; // drivers show as part of their vehicle
       // speed for the run cycle, measured on what we draw
       const prev = e.last || s;
       e.spd = Math.min(12, Math.hypot(s.x - prev.x, s.z - prev.z) / Math.max(dt, 0.001));

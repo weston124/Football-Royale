@@ -83,6 +83,15 @@ export class Hud {
       g.strokeStyle = '#d9a8ff'; g.lineWidth = 2; g.beginPath(); g.arc(X(z.cx), Z(z.cz), z.r * k, 0, 7); g.stroke();
       if (z.st === 0) { g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(X(z.tx), Z(z.tz), z.tr * k, 0, 7); g.stroke(); }
     }
+    for (const v of s.vehicles || []) { // drivable vehicles: little rounded cars
+      if (v.mine) continue;
+      const len = (v.truck ? 4.8 : 3) * k * (big ? 1.6 : 1.3) + 4, wid = len * 0.55;
+      g.save(); g.translate(X(v.x), Z(v.z)); g.rotate(-v.yaw);
+      g.fillStyle = v.broken ? '#777' : '#ffffff'; g.strokeStyle = '#1d2026'; g.lineWidth = 1.5;
+      g.beginPath(); g.roundRect(-wid / 2, -len / 2, wid, len, 2); g.fill(); g.stroke();
+      g.fillStyle = '#e8412c'; g.fillRect(-wid / 2 + 1, -len / 2 + 1, wid - 2, len * 0.3);
+      g.restore();
+    }
     for (const m of s.mates || []) { g.fillStyle = '#3fa2ff'; g.beginPath(); g.arc(X(m.x), Z(m.z), big ? 6 : 4, 0, 7); g.fill(); }
     // me
     g.save(); g.translate(X(s.x), Z(s.z)); g.rotate(-s.yaw);

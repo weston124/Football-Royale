@@ -13,6 +13,7 @@ export function generateMap(seed = MAP_SEED) {
   const chests = [];  // equipment bag spots
   const pois = [];    // named places {name,x,z,r}
   const reserved = []; // rectangles where we shouldn't scatter trees
+  const vehicles = []; // drivable vehicle spots {type,x,z,yaw,color} (see shared/vehicles.js)
 
   const box = (x0, y0, z0, x1, y1, z1, color, kind = 'box') => {
     const b = { min: [Math.min(x0, x1), y0, Math.min(z0, z1)], max: [Math.max(x0, x1), y1, Math.max(z0, z1)], color, kind };
@@ -116,7 +117,16 @@ export function generateMap(seed = MAP_SEED) {
   reserve(290, 260, 180, 140);
   decor.push({ type: 'asphalt', x: 290, z: 260, w: 170, d: 130 });
   const carColors = [0xd23b3b, 0x3b6fd2, 0xf0f0f0, 0x222222, 0xe6c13a, 0x3bb36a, 0x8d4fc4];
+  // a few parking spaces hold drivable Tailgate Trucks instead of parked cars (same random
+  // numbers are drawn either way, so the rest of the city doesn't change)
+  const driveSlots = { '0,3': 0, '1,8': 1, '2,1': 2, '3,6': 3, '4,10': 0 };
   for (let row = 0; row < 5; row++) for (let i = 0; i < 12; i++) {
+    const slot = driveSlots[`${row},${i}`];
+    if (slot !== undefined) {
+      if (rnd() >= 0.35) { rnd.range(-1, 1); rnd.pick(carColors); }
+      vehicles.push({ type: 'truck', x: 220 + i * 12, z: 210 + row * 24, yaw: row % 2 ? 0 : Math.PI, color: slot });
+      continue;
+    }
     if (rnd() < 0.35) continue;
     const x = 220 + i * 12 + rnd.range(-1, 1), z = 210 + row * 24;
     const c = rnd.pick(carColors);
@@ -232,5 +242,21 @@ export function generateMap(seed = MAP_SEED) {
   // Tree trunks are solid
   for (const t of trees) box(t.x - 0.4, 0, t.z - 0.4, t.x + 0.4, t.h * 0.6, t.z + 0.4, 0x6b4423, 'trunk');
 
-  return { boxes, decor, trees, loot, chests, pois };
+    // Drivable vehicles around the rest of the city (spots checked clear of buildings and trees
+  // by test/vehicles.test.js)
+  vehicles.push(
+    { type: 'cart', x: -4, z: 72, yaw: 0, color: 0 },             // Mega Dome, south road
+    { type: 'truck', x: 4, z: -74, yaw: Math.PI, color: 1 },      // Mega Dome, north road
+    { type: 'cart', x: 102, z: 4, yaw: -Math.PI / 2, color: 1 },  // Mega Dome, east road
+    { type: 'truck', x: -102, z: -4, yaw: Math.PI / 2, color: 2 }, // Mega Dome, west road
+    { type: 'truck', x: 220, z: -300, yaw: 0, color: 3 },         // Locker Town streets
+    { type: 'cart', x: 300, z: -220, yaw: Math.PI / 2, color: 2 },
+    { type: 'cart', x: -50, z: -330, yaw: 0, color: 3 },          // Sideline Suburbs
+    { type: 'truck', x: 25, z: -302, yaw: Math.PI / 2, color: 0 },
+    { type: 'truck', x: -160, z: 200, yaw: Math.PI / 2, color: 1 }, // the big roads
+    { type: 'cart', x: 160, z: -200, yaw: -Math.PI / 2, color: 0 },
+    { type: 'truck', x: 0, z: 160, yaw: 0, color: 2 },
+    { type: 'cart', x: -250, z: 7.5, yaw: Math.PI / 2, color: 1 }, // Snack Shack Row
+  );
+  return { boxes, decor, trees, loot, chests, pois, vehicles };
 }
