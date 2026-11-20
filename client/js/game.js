@@ -12,6 +12,7 @@ import {
 import { sfx } from './audio.js';
 import { createTouchControls } from './touch.js';
 import { PlayerRenderer } from './players.js';
+import { Vehicles } from './vehicles.js';
 import { LootRenderer, ChestRenderer } from './instanced.js';
 import { attachRenderer, getSettings, onQualityChange, frameTick } from './quality.js';
 import { createSnapshotDecoder, extraDelay } from '/shared/netcodec.js';
@@ -64,6 +65,7 @@ export class Game {
     this.lootR = new LootRenderer(this.scene);
     this.chestR = new ChestRenderer(this.scene);
     this.players = new PlayerRenderer(this.scene);
+    this.veh = new Vehicles(this); // drivable vehicles (client/js/vehicles.js)
     map.chests.forEach((c, i) => {
       this.chestR.add(i, c.x, c.y, c.z);
       this.chests.set(i, { x: c.x, y: c.y, z: c.z });
@@ -201,6 +203,7 @@ export class Game {
       return;
     }
     if (code.startsWith('Digit')) { const n = +code.slice(5); if (n >= 1 && n <= 6) this.selectSlot(n - 1); }
+    if (this.veh.driving && ['KeyR', 'KeyQ', 'KeyG', 'KeyZ', 'KeyX', 'KeyC'].includes(code)) return; // hands on the wheel
     switch (code) {
       case 'Space':
         if (this.local.phase === 'blimp') this.net.send({ t: 'jump' });
@@ -250,12 +253,15 @@ export class Game {
   interact() {
     const t = this.nearestInteract();
     if (!t) return;
-    if (t.chest != null) { this.net.send({ t: 'open', id: t.chest }); sfx.chest(); }
+    if (t.veh) { this.net.send({ t: 'veh', id: t.veh === 'exit' ? 0 : t.veh }); sfx.click(); }
+    else if (t.chest != null) { this.net.send({ t: 'open', id: t.chest }); sfx.chest(); }
     else { this.net.send({ t: 'pickup', id: t.id }); sfx.pickup(); }
   }
   nearestInteract() {
     if (this.local.phase !== 'ground' || this.dead) return null;
     const L = this.local;
+    const car = this.veh.nearest(L);
+    if (this.veh.driving) return car;
     let best = null, bd = PICKUP_RANGE;
     for (const [id, c] of this.chests) {
       const d = Math.hypot(c.x - L.x, c.z - L.z);
@@ -270,6 +276,7 @@ export class Game {
         best = { id, label: `Pick up <span style="color:${r ? r.color : '#fff'}">${r ? r.name + ' ' : ''}${itemName(l.item)}${count}</span>` };
       }
     }
+    if (car && (!best || car.d + 0.6 < bd)) return car; // loot right beside you wins
     return best;
   }
 
@@ -279,6 +286,7 @@ export class Game {
   start(msg) {
     this.blimp = msg.blimp;
     this.kind = msg.kind || this.kind;
+    if (this.veh.kind !== this.kind) this.veh.reset(this.kind);
     for (const r of msg.roster) this.addRoster(r);
     for (const l of msg.loot) this.addLoot(l);
     for (const id of msg.chests) this.removeChest(id);
@@ -362,6 +370,7 @@ export class Game {
       while (b.length > 30) b.shift();
     }
     for (const ev of m.ev) this.onEvent(ev);
+    if (m.vh) this.veh.onSnapshot(m.vh, m.tm);
     if (m.zn) {
       const z = m.zn;
       this.zone = { cx: z[0], cz: z[1], r: z[2], tx: z[3], tz: z[4], tr: z[5], st: z[6], end: z[7], ph: z[8], t0: z[9] };
@@ -399,6 +408,7 @@ export class Game {
       case 'pd': this.removePiece(ev[1]); break;
       case 'ph': { const p = this.pieces.get(ev[1]); if (p) p.hp = ev[2]; break; }
       case 'ro': this.addRoster(ev.slice(1)); break;
+      case 'vb': this.veh.onBroken(ev[1]); break;
       case 'rm': this.roster.delete(ev[1]); break;
       case 'jmp': break;
       case 'sw': { const e = this.ents.get(ev[1]); if (e) e.swing = 1; break; }
@@ -451,7 +461,7 @@ export class Game {
         let html;
         if (wid === 'storm') html = `<b>${esc(victim.name)}</b> got caught in the Overtime Storm 🌀`;
         else if (wid === 'quit') html = `<b>${esc(victim.name)}</b> left the game`;
-        else html = `<b>${esc(killer ? killer.name : '?')}</b> ${head ? '🎯' : '🏈'} <small>${WEAPONS[wid] ? WEAPONS[wid].name : ''}</small> <b>${esc(victim.name)}</b>`;
+        else html = `<b>${esc(killer ? killer.name : '?')}</b> ${head ? '🎯' : wid === 'vehicle' ? '🚙' : '🏈'} <small>${WEAPONS[wid] ? WEAPONS[wid].name : wid === 'vehicle' ? 'Tailgate Tackle' : ''}</small> <b>${esc(victim.name)}</b>`;
         this.hud.killfeed(html, mine);
         if (kid === this.myId && vid !== this.myId) this.onMyElim(victim, head);
         if (this.spectateId === vid && this.dead) setTimeout(() => this.cycleSpectate(), 1500);
@@ -504,8 +514,10 @@ export class Game {
         break;
       }
       case 'storm': this.hud.flash('storm', 0.7); sfx.storm(); this.pendingDmg = 0; break;
-      case 'kb': this.local.vx += e[1]; this.local.vy = Math.max(this.local.vy, e[2]); this.local.vz += e[3]; this.local.onGround = false; break;
+      case 'kb': if (this.veh.driving) break; this.local.vx += e[1]; this.local.vy = Math.max(this.local.vy, e[2]); this.local.vz += e[3]; this.local.onGround = false; break;
       case 'msg': this.hud.toast(e[1]); break;
+      case 'veh': this.veh.onEnterExit(e); break;
+      case 'vc': this.veh.correct(e); break;
       case 'mats': break;
       case 'use': this.useTotal = e[1]; break;
       case 'dead': {
@@ -747,8 +759,10 @@ export class Game {
         input.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
       }
       if (this.touch) this.touch.applyInput(input);
-      if (this.emote && (input.f || input.s || input.jump)) this.emote = null;
-      if (L.phase === 'ground') {
+      if (this.emote && (input.f || input.s || input.jump || this.veh.driving)) this.emote = null;
+      this.driveInput = input;
+      if (L.phase === 'ground' && this.veh.driving) this.veh.drive(input, dt);
+      else if (L.phase === 'ground') {
         let left = dt;
         while (left > 0) { const h = Math.min(left, 1 / 60); stepPlayer(this.world, L, input, h); left -= h; }
       } else if (L.phase === 'fall' || L.phase === 'glide') {
@@ -761,7 +775,7 @@ export class Game {
       }
       if (t - this.lastSend > 1 / TICK_RATE) {
         this.lastSend = t;
-        this.net.send({ t: 'in', x: +L.x.toFixed(2), y: +L.y.toFixed(2), z: +L.z.toFixed(2), yaw: +this.yaw.toFixed(3), pitch: +this.pitch.toFixed(3), em: this.emote ? this.emote.id : 0, ph: L.phase });
+        this.net.send({ t: 'in', x: +L.x.toFixed(2), y: +L.y.toFixed(2), z: +L.z.toFixed(2), yaw: +this.yaw.toFixed(3), pitch: +this.pitch.toFixed(3), em: this.emote ? this.emote.id : 0, ph: L.phase, ...this.veh.inFields() });
       }
     }
 
@@ -770,7 +784,7 @@ export class Game {
     const it = this.currentItem();
     const wantAds = this.mouse.right && locked && it && it.w && it.w !== 'tackle' && it.w !== 'whistle' && !this.buildKind && L.phase === 'ground';
     this.ads += ((wantAds ? 1 : 0) - this.ads) * Math.min(1, dt * 14);
-    if (locked && !this.dead && L.phase === 'ground' && !this.emoteMenu) {
+    if (locked && !this.dead && L.phase === 'ground' && !this.emoteMenu && !this.veh.driving) {
       if (this.buildKind) this.updateBuild(t);
       else if (this.mouse.left) this.tryFire(t, renderT);
     }
@@ -796,6 +810,8 @@ export class Game {
         if (dist < 38 && spd > 2) this.footstep(e, e.s, dist, spd, dt);
       }
     }
+
+    this.veh.update(dt, renderT, this.dead ? null : this.driveInput);
 
     // --- projectiles ---
     for (const p of this.projs.values()) {
@@ -839,7 +855,7 @@ export class Game {
     for (const e of this.ents.values()) {
       if (!e.s) continue;
       e.dist = Math.hypot(e.s.x - cp.x, e.s.z - cp.z);
-      if (e.tag) { e.tag.position.set(e.s.x, e.s.y + 2.5, e.s.z); e.tag.visible = e.dist < Q.tagDist && e.s.ph !== 4; }
+      if (e.tag) { e.tag.position.set(e.s.x, e.s.y + 2.5, e.s.z); e.tag.visible = e.dist < Q.tagDist && e.s.ph !== 4; if (e.inVehicle) e.tag.position.y += 0.4; }
     }
     this.players.update(this.ents, this.camera, Q, t, dt, this.dead ? this.spectateId : 0);
     frameTick(dt);
@@ -850,7 +866,7 @@ export class Game {
     // --- render ---
     this.renderer.autoClear = true;
     this.renderer.render(this.scene, this.camera);
-    const showVm = !this.dead && L.phase === 'ground' && !this.emote && !(this.ads > 0.6 && it && it.w === 'sniper');
+    const showVm = !this.dead && L.phase === 'ground' && !this.emote && !this.veh.driving && !(this.ads > 0.6 && it && it.w === 'sniper');
     if (showVm) {
       this.updateViewmodelItem();
       const bob = Math.hypot(L.vx, L.vz) > 1 && L.onGround ? Math.sin(t * 11) * 0.012 : 0;
@@ -872,6 +888,7 @@ export class Game {
     if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
     $('scope').classList.toggle('hidden', !(this.ads > 0.6 && it && it.w === 'sniper'));
     $('crosshair').style.setProperty('--g', `${4 + this.spreadNow() * 260}px`);
+    $('crosshair').style.visibility = this.veh.driving ? 'hidden' : '';
     this.blimpMesh.visible = !!this.blimp && this.serverNow() - this.blimp.t0 < this.blimp.len / DROP.speed + 8;
     if (this.blimpMesh.visible) {
       const b = this.blimp, d = (this.serverNow() - b.t0) * DROP.speed;
@@ -891,11 +908,15 @@ export class Game {
       if (!this.emote) this.emote = { id: 3, start: t };
     } else if (L.phase === 'blimp') {
       thirdTarget = this.blimpMesh.position.clone(); dist = 70;
+    } else if (this.veh.driving) {
+      // chase camera behind my vehicle
+      thirdTarget = new THREE.Vector3(L.x, L.y + 2.2, L.z);
+      dist = this.veh.driving.type === 'truck' ? 8 : 6.5;
     } else if (this.emote || L.phase === 'fall' || L.phase === 'glide') {
       thirdTarget = new THREE.Vector3(L.x, L.y + 1.6, L.z);
       dist = L.phase === 'glide' ? 8 : 5;
     }
-    const showMe = !this.dead && L.phase !== 'blimp' && !!thirdTarget;
+    const showMe = !this.dead && L.phase !== 'blimp' && !!thirdTarget && !this.veh.driving;
     this.myModel.visible = showMe;
     if (showMe) {
       this.myModel.position.set(L.x, L.y, L.z);
@@ -1091,7 +1112,7 @@ export class Game {
     else if (this.reloadUntil > t) this.hud.useBar(this.reloadUntil - t, this.reloadTotal || 1, 'Reloading…');
     else this.hud.useBar(0);
     // map
-    const s = { x: L.x, z: L.z, yaw: this.yaw, zone: this.zoneDisp, mates: [], blimp: L.phase === 'blimp' ? this.blimp : null };
+    const s = { x: L.x, z: L.z, yaw: this.yaw, zone: this.zoneDisp, mates: [], blimp: L.phase === 'blimp' ? this.blimp : null, vehicles: this.veh.mapIcons() };
     for (const [id, e] of this.ents) {
       const r = this.roster.get(id);
       if (r && r.team === this.myTeam && e.buf.length) s.mates.push(e.buf[e.buf.length - 1]);
@@ -1128,7 +1149,7 @@ export class Game {
     this.hud.centerMsg(''); this.hud.prompt('');
     this.offQuality();
     for (const e of this.ents.values()) { this.players.release(e); if (e.tag) { e.tag.material.map.dispose(); e.tag.material.dispose(); } }
-    this.players.dispose(); this.lootR.dispose(); this.chestR.dispose();
+    this.players.dispose(); this.lootR.dispose(); this.chestR.dispose(); this.veh.dispose();
     for (const p of this.pieces.values()) p.mesh.geometry.dispose();
     disposePlayer(this.myModel);
     this.worldObjects.push(this.blimpMesh, this.ghost);

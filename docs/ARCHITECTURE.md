@@ -23,12 +23,14 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 |---|---|
 | `shared/constants.js` | Tick rate, map size, player physics, storm phases, build/bot settings |
 | `shared/physics.js` | `World` spatial hash of AABB boxes, `stepPlayer`, `stepFalling`, `raycastWorld`, `rayPlayer`, `pieceBox` (build pieces) |
-| `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs) |
+| `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs, vehicle spots) |
+| `shared/vehicles.js` | Vehicle types (Tailgate Truck, Sideline Cart), spawn list per match kind, arcade car physics `stepVehicle`, collision footprint |
 | `shared/weapons.js` | Weapons (5 rarities), consumables, damage |
 | `shared/skins.js` | Outfit presets, Longhorn Item Shop, emotes, Ball Bucks rewards, `sanitizeSkin` |
 | `server/index.js` | HTTP static server, WebSocket hub, rooms, friend squads, admin hub actions |
 | `server/match.js` | One match: authoritative rules (movement validation, hitscan w/ lag compensation, projectiles, loot, storm, building, death, win, rewards) |
 | `server/bots.js` | Bot AI |
+| `server/vehicles.js` | `VehicleSystem`: who drives what, validating driven vehicles, run-over tackles, vehicle damage, `vh` snapshot field |
 | `server/accounts.js` | Accounts: username (ALL CAPS), email stored only as HMAC hash, scrypt passwords, sessions, Ball Bucks |
 | `server/static.js`, `server/net.js` | Static files (CSP, gzip/brotli, ETag caching, versioned `/vendor/three@x/`), client IP + rate limiter helpers |
 | `server/safefile.js` | Atomic JSON saves, rolling backups, corrupt-file recovery (used for `accounts.json`, `admin.json`) |
@@ -44,6 +46,7 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `shared/netcodec.js` | Snapshot player encoding (delta + quantization) and interest-management bands, used by server, client and tests |
 | `client/js/world.js` | Builds the 3D city from the map; minimap image |
 | `client/js/menuScene.js` | Animated stadium home-screen background |
+| `client/js/vehicles.js` | Vehicle models, interpolation of everyone's vehicles, driving my own vehicle, chase camera |
 | `client/js/hud.js`, `client/js/audio.js` | HUD helpers; Web Audio procedural sounds + party music |
 | `client/admin.html` | Admin web panel |
 | `tools/build_human.py` | Converts MakeHuman CC0 data into `client/assets/human*.{json,bin}` |
@@ -53,7 +56,7 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 ## Network protocol (JSON over `/ws`)
 Client → server: `hello{token,skin}`, `signup`, `login`, `logout`, `join{create|room|mode}`, `start`, `leave`,
 `in{x,y,z,yaw,pitch,em,ph}` (20 Hz), `jump`, `deploy`, `fire{aim,dirs,rt}`, `reload`, `slot{i}`, `pickup{id}`,
-`open{id}`, `drop`, `build{k,gx,gy,gz,r}`, `buy{item}`, `delete_account{password}`, `spec{id}` (dead player: who they spectate), `party_*`, `admin{action}`.
+`open{id}`, `drop`, `build{k,gx,gy,gz,r}`, `veh{id}` (get in vehicle `id`; `veh{}` gets out), `buy{item}`, `delete_account{password}`, `spec{id}` (dead player: who they spectate), `party_*`, `admin{action}`.
 Server → client: `auth`, `auth_needed`, `profile`, `welcome`, `lobby`, `start`, `s` (20 Hz snapshot: `ps` player
 entries, `pg` players to forget, `ev` events, `zn` zone, `me` private state, `pe` personal events), `end`, `closed`, `reward`, `bc`, `party_time`, `account_deleted`, `delete_error`, `error`.
 Pages must keep working under the CSP: no inline `on*=` handlers and no `eval`; inline `<script>` blocks are allowed
@@ -69,6 +72,22 @@ automatically (the server hashes them), inline styles are fine.
   mates always every tick. The client draws a player sent every N ticks `(N-1)/20` s further in the past, and the
   server's lag compensation rewinds that player by the same amount (`Match.netDelay`).
 - `sh` (shots) and `sw` (tackle swings) events only go to players within 320 m / 160 m.
+
+**Vehicles (`s.vh`, `server/vehicles.js`, `shared/vehicles.js`).** ~17 vehicles at fixed spots in the city
+(`map.vehicles`, ids = index + 1, the same everywhere), 2 carts on Party Island. Each is in the collision `World`
+as two square boxes (`kind:'vehicle'`, `vid`), so players, bots, bullets and other vehicles bump into it; the nav
+grid blocks the parked spots. Entry `[id, x, y, z, yaw, speed, driverId, hp%, broken]`, sent to a client only
+when it changed since the last entry that client got (every tick within 160 m, every 4th tick farther); the
+first snapshot has all of them, parked vehicles cost nothing. Clients interpolate them like players.
+- Driving: `veh{id}` within 3 m of a free, working vehicle → personal event `pe ['veh', id, x, y, z, yaw]`
+  (`['veh', 0]` + `corr` when you get out, die, quit or it breaks down; you're placed beside it). The driver's
+  client runs `stepVehicle` and sends `in{x,y,z,yaw,pitch,vy,vs}` (`vy` vehicle yaw, `vs` speed); the server
+  allows up to 22 m/s, rejects positions inside or through walls (`pe ['vc', x, y, z, yaw]` correction) and moves
+  the vehicle boxes. No `fire/reload/pickup/open/drop/build` while driving.
+- Run-over: hitting an enemy at > 8 m/s = 20-55 damage (`kf` weapon `vehicle`) + knockback (`kb`), 1 s cooldown
+  per target; Party Island: a bump, no damage. Bullets/tackles/explosions damage vehicles (truck 450, cart 260 hp);
+  at 0 hp it breaks down (`ev ['vb', id]`, smoke, can't be driven). Drivers sit up high: their head/chest can
+  be shot over the vehicle box, and they take storm and explosion damage normally.
 
 ## Graphics quality (client/js/quality.js)
 `setQuality('auto'|'low'|'medium'|'high')`, `getQuality()`, `getQualityInfo()`, `onQualityChange(fn)`; also on

@@ -283,6 +283,9 @@ class TouchControls {
     cl.toggle('reloadable', ground && !!(it && it.w && WEAPONS[it.w].mag));
     cl.toggle('menu', g.emoteMenu);
     cl.toggle('island', g.kind === 'island');
+    const driving = !!g.veh?.driving;
+    if (cl.contains('driving') !== driving) $('t-jump').innerHTML = driving ? '🛑<small>BRAKE</small>' : '⬆<small>JUMP</small>';
+    cl.toggle('driving', driving);
     $('t-aim').classList.toggle('on', !!g.mouse.right && !!gun);
     for (const k of ['wall', 'floor', 'ramp']) $(`t-${k}`).classList.toggle('on', g.buildKind === k);
     $('t-fire').textContent = g.buildKind ? '🧱' : it && it.c ? '🩹' : it && it.w === 'tackle' ? '💪' : '🔥';
@@ -295,7 +298,7 @@ class TouchControls {
     const g = this.g, L = g.local;
     this.assist = 1; this.target = null;
     const it = g.currentItem();
-    if (g.dead || L.phase !== 'ground' || g.kind === 'island' || g.buildKind || g.emote || !it || !it.w) return;
+    if (g.dead || g.veh?.driving || L.phase !== 'ground' || g.kind === 'island' || g.buildKind || g.emote || !it || !it.w) return;
     const W = WEAPONS[it.w];
     const range = Math.min(W.range || 3, 120);
     const ex = L.x, ey = L.y + PLAYER.eye, ez = L.z;
