@@ -167,6 +167,11 @@ const hub = {
         }).catch(() => reply('Something went wrong. Try again.', false));
         return;
       }
+      case 'armory': { // 🔫 give yourself weapons (Match.armory checks the match kind, alive, landed)
+        if (!c.match || !c.player || c.match.closed) return reply('Join a Private Room or Party Island first, then open the armory', false);
+        const r = c.match.armory(c.player, { give: text(m.weapon, 16), r: Number(m.rarity) | 0, refill: !!m.refill, everything: !!m.everything });
+        return reply(r.msg, r.ok);
+      }
       case 'stats': {
         const st = hub.stats();
         return reply(`${st.online} online · ${st.inMatch} in matches · ${st.matches.length} matches · ${st.profiles} accounts`);

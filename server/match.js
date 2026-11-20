@@ -23,6 +23,14 @@ export const WCODES = ['tackle', ...GUN_IDS];
 
 let nextPlayerId = 1;
 
+// ---------- backpack ----------
+export const INV_SLOTS = 5;          // item slots everyone gets (slot 0 is always Tackle)
+export const ADMIN_MAX_SLOTS = 40;   // safety cap for the admins' unlimited backpack
+// Where admin accounts (profile.isAdmin) get the unlimited backpack and the 👑 armory.
+// Public Quick Play is left out on purpose so it stays fair: add 'quickPlay' here to change that.
+export const ADMIN_POWER_MATCHES = ['private', 'partyRoyale', 'island'];
+const emptyInv = () => new Array(INV_SLOTS).fill(null);
+
 export class Match {
   constructor({ code, mode = 'nobuild', isPublic = false, difficulty = 'normal', onClose, kind = 'normal', title = '', onReward = null }) {
     this.onReward = onReward; // (player, bucks, why, stat) -> gives Ball Bucks
@@ -61,7 +69,7 @@ export class Match {
     return {
       id: nextPlayerId++, name, skin: sanitizeSkin(skin), bot,
       alive: true, phase: 'lobby', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true,
-      yaw: 0, pitch: 0, hp: MAX_HP, pad: 0, inv: [null, null, null, null, null], slot: 0,
+      yaw: 0, pitch: 0, hp: MAX_HP, pad: 0, inv: emptyInv(), slot: 0,
       team: 0, mats: 0, kills: 0, emote: 0, reloadUntil: 0, reloadSlot: -1, useUntil: 0, useSlot: -1,
       nextFire: 0, hist: [], lastIn: null, pev: [], lastMe: '', place: 0,
     };
@@ -252,6 +260,15 @@ export class Match {
     return list.some((b) => !b.ramp && x > b.min[0] && x < b.max[0] && z > b.min[2] && z < b.max[2] && y + 0.5 > b.min[1] && y + 0.5 < b.max[1]);
   }
 
+  // 'quickPlay' | 'private' | 'partyRoyale' | 'island' (see ADMIN_POWER_MATCHES)
+  get category() { return this.kind === 'normal' ? (this.isPublic ? 'quickPlay' : 'private') : this.kind; }
+  adminPowers(p) { return !!(p && !p.bot && p.profile && p.profile.isAdmin && ADMIN_POWER_MATCHES.includes(this.category)); }
+  // Drop empty slots off the end of a grown (admin) backpack, never below the normal size
+  // or the slot in hand, so slot numbers of the other items never shift.
+  trimInv(p) {
+    while (p.inv.length > INV_SLOTS && p.inv[p.inv.length - 1] == null && p.inv.length > p.slot) p.inv.pop();
+  }
+
   giveItem(p, item) {
     if (item.mats) {
       if (this.mode !== 'build') return false;
@@ -272,6 +289,8 @@ export class Match {
     }
     const free = p.inv.indexOf(null);
     if (free >= 0) { p.inv[free] = item; return true; }
+    // admins in Private Rooms / parties: a full backpack just grows a new slot
+    if (this.adminPowers(p) && p.inv.length < ADMIN_MAX_SLOTS) { p.inv.push(item); return true; }
     if (p.slot > 0) {
       const old = p.inv[p.slot - 1];
       p.inv[p.slot - 1] = item;
@@ -280,6 +299,42 @@ export class Match {
     }
     p.pev.push(['msg', 'Backpack full! Pick a slot (2-6) to swap.']);
     return false;
+  }
+
+  // 👑 Admin armory (in-game admin drop-down). Returns { ok, msg } for the admin's status line.
+  //   req: { give: weaponId, r: rarity } | { refill: true } | { everything: true }
+  armory(p, req) {
+    const no = (msg) => ({ ok: false, msg });
+    if (!p || !p.profile || !p.profile.isAdmin) return no('Admins only');
+    if (!this.adminPowers(p)) return no('Admin armory works in Private Rooms and Party Island (not in public Quick Play)');
+    if (this.state !== 'play') return no('Start the match first');
+    if (!p.alive) return no('You are knocked out. Wait for the next match!');
+    if (p.phase !== 'ground') return no('Land first, then open the armory');
+    const make = (w, r) => {
+      const W = WEAPONS[w];
+      r = W.fixedRarity != null ? W.fixedRarity : Math.max(W.minRarity || 0, Math.min(RARITIES.length - 1, r | 0));
+      return { w, r, ammo: W.stack || W.mag };
+    };
+    const room = () => p.inv.length < ADMIN_MAX_SLOTS || p.inv.includes(null);
+    if (req.refill) {
+      for (const it of p.inv) {
+        if (it && it.w) it.ammo = WEAPONS[it.w].stack || WEAPONS[it.w].mag;
+        if (it && it.c) it.n = CONSUMABLES[it.c].stack;
+      }
+      p.hp = MAX_HP; p.pad = MAX_PADDING; p.reloadUntil = 0;
+      return { ok: true, msg: '💪 Full ammo, full health and full padding!' };
+    }
+    if (req.everything) {
+      let n = 0;
+      const all = [...GUN_IDS.map((w) => make(w, 4)), ...Object.keys(CONSUMABLES).map((c) => ({ c, n: CONSUMABLES[c].stack }))];
+      for (const it of all) if (room() && this.giveItem(p, it)) n++;
+      return n ? { ok: true, msg: `🎁 Gave you ${n} items (Legendary weapons). Backpack: ${p.inv.filter(Boolean).length} items` } : no(`Backpack is full (${ADMIN_MAX_SLOTS} slots)`);
+    }
+    if (!GUN_IDS.includes(req.give)) return no('Pick a weapon');
+    if (!room()) return no(`Backpack is full (${ADMIN_MAX_SLOTS} slots). Drop something with Q first`);
+    const it = make(req.give, req.r);
+    if (!this.giveItem(p, it)) return no('No room in your backpack');
+    return { ok: true, msg: `🔫 ${RARITIES[it.r].name} ${WEAPONS[it.w].name} added! Backpack: ${p.inv.filter(Boolean).length} items` };
   }
 
   // ---------- input handlers ----------
@@ -299,7 +354,7 @@ export class Match {
       case 'reload': return this.startReload(p);
       case 'slot': {
         const i = m.i | 0;
-        if (i >= 0 && i <= 5 && i !== p.slot) { p.slot = i; p.reloadUntil = 0; p.useUntil = 0; }
+        if (i >= 0 && i <= p.inv.length && i !== p.slot) { p.slot = i; p.reloadUntil = 0; p.useUntil = 0; this.trimInv(p); }
         return;
       }
       case 'pickup': return this.onPickup(p, m.id);
@@ -307,6 +362,7 @@ export class Match {
       case 'drop': {
         if (p.slot > 0 && p.inv[p.slot - 1]) {
           const it = p.inv[p.slot - 1]; p.inv[p.slot - 1] = null;
+          this.trimInv(p);
           const fx = -Math.sin(p.yaw) * 1.5, fz = -Math.cos(p.yaw) * 1.5;
           this.dropLoot(it, p.x + fx, p.y, p.z + fz, p.x, p.z);
         }
@@ -363,7 +419,7 @@ export class Match {
     return h[0];
   }
 
-  currentItem(p) { return p.slot === 0 ? { w: 'tackle', r: 0 } : p.inv[p.slot - 1]; }
+  currentItem(p) { return p.slot === 0 ? { w: 'tackle', r: 0 } : p.inv[p.slot - 1] || null; }
 
   startReload(p) {
     const it = this.currentItem(p);
@@ -518,7 +574,8 @@ export class Match {
       const a = (i / Math.max(1, items.length)) * Math.PI * 2;
       this.dropLoot(it, q.x + Math.cos(a) * 1.3, q.y, q.z + Math.sin(a) * 1.3, q.x, q.z);
     });
-    q.inv = [null, null, null, null, null];
+    q.inv = emptyInv();
+    if (q.slot > INV_SLOTS) q.slot = 0;
     q.mats = 0;
     this.checkWin();
   }
