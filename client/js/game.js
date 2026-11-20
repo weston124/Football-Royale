@@ -204,6 +204,12 @@ export class Game {
       if ((code === 'Enter' || code === 'Escape') && $('result').classList.contains('hidden')) $('result').classList.remove('hidden');
       return;
     }
+    // admins: ` opens the 👑 Admin menu mid-match (the mouse is locked to the game, so it can't be clicked)
+    if (code === 'Backquote' && !document.getElementById('admin-menu').classList.contains('hidden')) {
+      document.exitPointerLock?.();
+      document.getElementById('admin-toggle').click();
+      return;
+    }
     if (code.startsWith('Digit')) this.digitSlot(+code.slice(5));
     if (this.veh.driving && ['KeyR', 'KeyQ', 'KeyG', 'KeyZ', 'KeyX', 'KeyC'].includes(code)) return; // hands on the wheel
     switch (code) {
