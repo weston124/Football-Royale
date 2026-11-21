@@ -23,7 +23,9 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 |---|---|
 | `shared/constants.js` | Tick rate, map size, player physics, storm phases, build/bot settings |
 | `shared/physics.js` | `World` spatial hash of AABB boxes, `stepPlayer`, `stepFalling`, `raycastWorld`, `rayPlayer`, `pieceBox` (build pieces) |
-| `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs, vehicle spots) |
+| `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs, vehicle spots, elevators) |
+| `shared/megadome.js` | ⭐ The Mega Dome stadium in the middle of the map (`DOME` layout numbers, `roofY`, `underDomeRoof`, `buildMegaDome`) |
+| `shared/elevators.js` | ⭐ Elevators: cab height = f(server clock), collision boxes (cab column + doors), shaft walls |
 | `shared/districts.js` | The newer districts (Skyline Heights, Gridiron Galleria, Huddle Shops, Fuel Stop, Kickoff Academy, Splash Zone, Signal Hill, farms, neighborhoods, Pit Stop Garage, ring roads) and the building kit: `shell` (one floor), `office` (multi-story with stairs to the roof), `tower`, `groundStairs`, parking rows. Own seeded RNG |
 | `shared/vehicles.js` | Vehicle types (Tailgate Truck, Sideline Cart, Hatchback), spawn list per match kind, arcade car physics `stepVehicle`, collision footprint |
 | `shared/weapons.js` | Weapons (5 rarities), consumables, damage |
@@ -47,6 +49,7 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `client/js/quality.js` | Graphics presets Low/Medium/High/Auto + dynamic resolution (see below) |
 | `shared/netcodec.js` | Snapshot player encoding (delta + quantization) and interest-management bands, used by server, client and tests |
 | `client/js/world.js` | Builds the 3D city from the map; minimap image |
+| `client/js/stadium.js` | Draws the Mega Dome: glass, vault roof, arches, video board, ribbon boards, seat backs, concourse dressing, instanced elevator cabs/doors |
 | `client/js/menuScene.js` | Animated stadium home-screen background |
 | `client/js/vehicles.js` | Vehicle models (3 LODs: full / instanced parked / instanced boxy far), interpolation of everyone's vehicles, driving my own vehicle, chase camera |
 | `client/js/hud.js`, `client/js/audio.js` | HUD helpers; Web Audio procedural sounds + party music |
@@ -54,6 +57,7 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `tools/build_human.py` | Converts MakeHuman CC0 data into `client/assets/human*.{json,bin}` |
 | `tools/netmeter.js`, `tools/serverbench.js` | KB/s per client (headless ws client); server CPU per tick with N full matches |
 | `tools/mapcheck.js`, `tools/navdump.js`, `tools/cityshots.js`, `tools/drivesmoke.js` | Map report (box/vehicle/loot counts, blocked vehicle spots, loot in walls, unreachable bags); bots' nav grid around a spot; Playwright screenshots + draw calls from fixed camera spots (`PORT=4802 node tools/cityshots.js outDir [name..]`); browser smoke test driving a Hatchback (LOD bands, page errors) |
+| `tools/domeshot.js`, `tools/domeplay.js` | Playwright: Mega Dome screenshots from fixed views (no match); a real Party Island session riding an elevator |
 | `tools/rendermeter.js`, `tools/lodstats.js`, `tools/lodshot.js` | Playwright: draw calls/triangles/GPU memory (incl. a 74-player crowd and spawn/despawn leak check), triangles per LOD, LOD screenshot |
 
 ## Network protocol (JSON over `/ws`)
@@ -100,6 +104,8 @@ of them, parked vehicles cost nothing. Clients interpolate them like players.
   be shot over the vehicle box, and they take storm and explosion damage normally.
 
 ## The city (shared/map.js + shared/districts.js)
+## The Mega Dome (shared/megadome.js, client/js/stadium.js)
+## Elevators (shared/elevators.js)
 ~2,560 boxes (~2,160 drawn as one merged mesh; tree trunks are drawn as instanced trees), 26 named places. Building rules:
 - Steps are 0.5 m (`PLAYER.stepUp` 0.7). Multi-story `office()` buildings: 4 m floors, 8 steps x 0.7 m in a
   switchback stairwell along one wall, a hole in each slab over its flight, a wall beside each flight up to the

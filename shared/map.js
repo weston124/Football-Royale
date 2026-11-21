@@ -3,6 +3,7 @@ import { makeRng } from './rng.js';
 import { MAP_HALF } from './constants.js';
 import { buildDistricts } from './districts.js';
 import { VEHICLE_TYPES } from './vehicles.js';
+import { buildMegaDome, DOME_FOOT } from './megadome.js';
 
 export const MAP_SEED = 20261119;
 
@@ -16,6 +17,7 @@ export function generateMap(seed = MAP_SEED) {
   const pois = [];    // named places {name,x,z,r}
   const reserved = []; // rectangles where we shouldn't scatter trees
   const vehicles = []; // drivable vehicle spots {type,x,z,yaw,color} (see shared/vehicles.js)
+  const elevators = []; // Mega Dome elevators (shared/elevators.js)
 
   const box = (x0, y0, z0, x1, y1, z1, color, kind = 'box') => {
     const b = { min: [Math.min(x0, x1), y0, Math.min(z0, z1)], max: [Math.max(x0, x1), y1, Math.max(z0, z1)], color, kind };
@@ -57,29 +59,12 @@ export function generateMap(seed = MAP_SEED) {
     }
   }
 
-  // ---------------- Mega Dome (center stadium) ----------------
-  pois.push({ name: 'Mega Dome', x: 0, z: 0, r: 90 });
+  // ---------------- Mega Dome (center stadium): shared/megadome.js ----------------
+  // (draws its own random numbers, and burns the 32 the old stadium used so the rest of
+  // the city stays exactly where it was)
+  for (let i = 0; i < 32; i++) rnd();
   reserve(0, 0, 190, 130);
-  decor.push({ type: 'field', x: 0, z: 0, w: 110, d: 54 });
-  const seatA = 0x2f5fb3, seatB = 0x3a6fc8;
-  for (let i = 0; i < 10; i++) {
-    const c = i % 2 ? seatA : seatB, y = 0.6 * (i + 1);
-    box(-60, 0, 32 + 1.6 * i, 60, y, 48, c, 'stand');      // south stands
-    box(-60, 0, -48, 60, y, -32 - 1.6 * i, c, 'stand');    // north stands
-    box(66 + 1.6 * i, 0, -28, 82, y, 28, c, 'stand');      // east stands
-    box(-82, 0, -28, -66 - 1.6 * i, y, 28, c, 'stand');    // west stands
-  }
-  box(-60, 0, 48, 60, 10, 49.5, 0xd8d8e0, 'wall');
-  box(-60, 0, -49.5, 60, 10, -48, 0xd8d8e0, 'wall');
-  box(82, 0, -28, 83.5, 10, 28, 0xd8d8e0, 'wall');
-  box(-83.5, 0, -28, -82, 10, 28, 0xd8d8e0, 'wall');
-  box(-14, 6, -49.5, 14, 11, -44, 0x444a55, 'box'); // press box
-  decor.push({ type: 'goalpost', x: -58, z: 0, rot: 0 });
-  decor.push({ type: 'goalpost', x: 58, z: 0, rot: 0 });
-  decor.push({ type: 'scoreboard', x: 0, z: 49, h: 14 });
-  scatterLoot(0, 0, 45, 10);
-  for (let i = 0; i < 6; i++) loot.push({ x: rnd.range(-50, 50), y: 6, z: (rnd() < 0.5 ? 1 : -1) * 47 });
-  chests.push({ x: 0, y: 0, z: 0 }, { x: -40, y: 0, z: 20 }, { x: 40, y: 0, z: -20 }, { x: 22, y: 6, z: -47 }); // top row of the stands, beside the press box
+  buildMegaDome({ box, decor, loot, chests, pois, elevators, seed });
 
   // ---------------- Practice Fields ----------------
   pois.push({ name: 'Practice Fields', x: -290, z: -280, r: 90 });
@@ -244,20 +229,25 @@ export function generateMap(seed = MAP_SEED) {
     trees.push({ x, z, h: rnd.range(6, 12), r: rnd.range(2, 3.5), pine: rnd() < 0.4 });
   }
   // Random floor loot in the wild (fewer since the new districts brought ~150 indoor spots)
+  const wildLoot0 = loot.length;
   for (let i = 0; i < 60; i++) {
     const x = rnd.range(-MAP_HALF + 20, MAP_HALF - 20), z = rnd.range(-MAP_HALF + 20, MAP_HALF - 20);
     loot.push({ x, y: 0, z });
   }
+  // nothing random inside the Mega Dome or around its arch feet
+  const inDome = (x, z, pad) => Math.abs(x) < DOME_FOOT.x + pad && Math.abs(z) < DOME_FOOT.z + pad;
+  for (let i = trees.length - 1; i >= 0; i--) if (inDome(trees[i].x, trees[i].z, 18) || (Math.abs(trees[i].x) < 135 && Math.abs(trees[i].z) < 32)) trees.splice(i, 1);
+  for (let i = loot.length - 1; i >= wildLoot0; i--) if (inDome(loot[i].x, loot[i].z, 2)) loot.splice(i, 1);
   // Tree trunks are solid
   for (const t of trees) box(t.x - 0.4, 0, t.z - 0.4, t.x + 0.4, t.h * 0.6, t.z + 0.4, 0x6b4423, 'trunk');
 
     // Drivable vehicles around the rest of the city (spots checked clear of buildings and trees
   // by test/vehicles.test.js)
   vehicles.push(
-    { type: 'cart', x: -4, z: 72, yaw: 0, color: 0 },             // Mega Dome, south road
-    { type: 'truck', x: 4, z: -74, yaw: Math.PI, color: 1 },      // Mega Dome, north road
-    { type: 'cart', x: 102, z: 4, yaw: -Math.PI / 2, color: 1 },  // Mega Dome, east road
-    { type: 'truck', x: -102, z: -4, yaw: Math.PI / 2, color: 2 }, // Mega Dome, west road
+    { type: 'cart', x: -6, z: 88, yaw: 0, color: 0 },             // Mega Dome, south road
+    { type: 'truck', x: 6, z: -88, yaw: Math.PI, color: 1 },      // Mega Dome, north road
+    { type: 'cart', x: 112, z: 4, yaw: -Math.PI / 2, color: 1 },  // Mega Dome, east road
+    { type: 'truck', x: -112, z: -4, yaw: Math.PI / 2, color: 2 }, // Mega Dome, west road
     { type: 'truck', x: 220, z: -300, yaw: 0, color: 3 },         // Locker Town streets
     { type: 'cart', x: 300, z: -220, yaw: Math.PI / 2, color: 2 },
     { type: 'cart', x: -50, z: -330, yaw: 0, color: 3 },          // Sideline Suburbs
@@ -275,5 +265,5 @@ export function generateMap(seed = MAP_SEED) {
     const hx = ((T.W + 1.5) * c + (T.L + 1.5) * s) / 2, hz = ((T.W + 1.5) * s + (T.L + 1.5) * c) / 2;
     return !boxes.some((b) => b.max[1] > 0.75 && b.min[1] < T.h + 0.4 && b.min[0] < v.x + hx && b.max[0] > v.x - hx && b.min[2] < v.z + hz && b.max[2] > v.z - hz);
   };
-  return { boxes, decor, trees, loot, chests, pois, vehicles: vehicles.filter(clear) };
+  return { boxes, decor, trees, loot, chests, pois, vehicles: vehicles.filter(clear), elevators };
 }

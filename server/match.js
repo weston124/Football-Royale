@@ -49,7 +49,8 @@ export class Match {
     this.countdownEnd = null;
     this.rnd = makeRng((Math.random() * 2 ** 32) >>> 0);
     this.world = new World();
-    for (const b of MAP.boxes) this.world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
+    this.world.addMap(MAP); // map boxes (incl. ramps) + the Mega Dome elevators
+    this.world.time = now();
     this.loot = new Map();
     this.chests = MAP.chests.map((c, i) => ({ id: i, x: c.x, y: c.y, z: c.z, open: false }));
     this.pieces = new Map();
@@ -814,6 +815,7 @@ export class Match {
   }
 
   simulate(t) {
+    this.world.time = t; // elevators (shared/elevators.js) move with the server clock
     const bp = this.blimp ? this.blimpPos(t) : { done: false };
     for (const p of this.players.values()) {
       if (!p.alive) continue;

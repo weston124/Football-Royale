@@ -32,7 +32,7 @@ test('the new places are on the map', () => {
 
 test('the new districts keep out of the Mega Dome area', () => {
   // the stadium (|x| < 135, |z| < 105) is rebuilt separately: nothing from shared/districts.js lands there
-  const mine = MAP.boxes.filter((b) => ['facade', 'stairs', 'slab', 'fence'].includes(b.kind));
+  const mine = MAP.boxes.filter((b) => ['facade', 'stairs', 'slab', 'fence'].includes(b.kind) && !b.dome);
   for (const b of mine) assert.ok(b.max[0] < -135 || b.min[0] > 135 || b.max[2] < -105 || b.min[2] > 105, `box at ${b.min} is outside the dome area`);
 });
 

@@ -7,20 +7,21 @@
 //   onQualityChange(fn)   -> fn(info) whenever the preset in use changes; returns an unsubscribe function
 // 'auto' starts from a guess based on the device and steps down if a match runs below the target fps.
 // Every preset also scales the render resolution down (to 50%) when the frame rate drops.
+// stadiumDetail: Mega Dome seat backs and arch lacing (client/js/stadium.js).
 import { setCharacterQuality } from './human.js';
 
 export const PRESETS = {
   low: {
     pixelRatio: 0.85, minScale: 0.5, fullMax: 2, fullDist: 14, midMax: 14, midDist: 55, farDist: 260,
-    lootDist: 40, chestDist: 90, tagDist: 120, fogFar: 380, camFar: 700, animEvery: 2,
+    lootDist: 40, chestDist: 90, tagDist: 120, fogFar: 380, camFar: 700, animEvery: 2, stadiumDetail: false,
   },
   medium: {
     pixelRatio: 1.0, minScale: 0.55, fullMax: 5, fullDist: 24, midMax: 26, midDist: 85, farDist: 380,
-    lootDist: 55, chestDist: 120, tagDist: 160, fogFar: 520, camFar: 1200, animEvery: 2,
+    lootDist: 55, chestDist: 120, tagDist: 160, fogFar: 520, camFar: 1200, animEvery: 2, stadiumDetail: true,
   },
   high: {
     pixelRatio: 1.5, minScale: 0.6, fullMax: 8, fullDist: 35, midMax: 40, midDist: 130, farDist: 450,
-    lootDist: 70, chestDist: 150, tagDist: 200, fogFar: 650, camFar: 2000, animEvery: 1,
+    lootDist: 70, chestDist: 150, tagDist: 200, fogFar: 650, camFar: 2000, animEvery: 1, stadiumDetail: true,
   },
 };
 const LEVELS = ['low', 'medium', 'high'];

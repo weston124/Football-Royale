@@ -1,4 +1,5 @@
 // Regression tests for match rules found by the headless simulator, bot AI and pacing.
+import { underDomeRoof } from '../shared/megadome.js';
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { Match, setClock, MAP } from '../server/match.js';
@@ -121,7 +122,8 @@ test('Party Island: leaving does not leave party gear behind', () => {
 
 test('nav grid: every equipment bag is reachable and doors work', () => {
   const N = nav();
-  for (const c of MAP.chests) assert.ok(N.reachable(c.x, c.y, c.z), `chest at ${c.x},${c.y},${c.z}`);
+  // (bags up on the Mega Dome's suite level / upper concourse are checked by stadium.test.js)
+  for (const c of MAP.chests) if (c.y < 1 || !underDomeRoof(c.x, c.z)) assert.ok(N.reachable(c.x, c.y, c.z), `chest at ${c.x},${c.y},${c.z}`);
   // from outside a closed side of a house to its middle: path must go round to the door
   const p = N.findPath(-270, -215, -290, -232, 5000);
   assert.ok(p && p.complete, 'path into house');

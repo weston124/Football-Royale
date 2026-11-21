@@ -35,12 +35,13 @@ export class Game {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(this.baseFov(), innerWidth / innerHeight, 0.08, 2000);
     this.world = new World();
-    for (const b of map.boxes) this.world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
+    this.world.addMap(map); // map boxes (incl. ramps) + the Mega Dome elevators
     const before = new Set(this.scene.children);
     const w = buildWorld(this.scene, map);
     this.worldObjects = this.scene.children.filter((o) => !before.has(o));
     setupEnvironment(renderer, this.scene, 0.5);
     this.storm = w.storm; this.stormTex = w.stormTex;
+    this.stadium = w.stadium; // Mega Dome: elevators + video board (client/js/stadium.js)
     this.decodePs = createSnapshotDecoder();
     this.roster = new Map(); this.ents = new Map(); this.loot = new Map(); this.chests = new Map();
     this.pieces = new Map(); this.projs = new Map(); this.fx = []; this.kills = new Map();
@@ -74,6 +75,7 @@ export class Game {
       const P = getSettings();
       if (this.scene.fog) this.scene.fog.far = P.fogFar;
       this.camera.far = P.camFar; this.camera.updateProjectionMatrix();
+      if (this.stadium) this.stadium.applyQuality(P.stadiumDetail);
     };
     this.offQuality = onQualityChange(this.applyQuality);
     this.applyQuality();
@@ -313,6 +315,7 @@ export class Game {
     for (const id of msg.chests) this.removeChest(id);
     for (const pc of msg.pieces || []) this.addPiece(pc);
     this.offset = msg.tm - nowS();
+    this.startedAt = msg.tm;
     if (this.blimp) {
       const b = this.blimp;
       this.yaw = Math.atan2(-b.dx, -b.dz);
@@ -782,6 +785,7 @@ export class Game {
       if (this.touch) this.touch.applyInput(input);
       if (this.emote && (input.f || input.s || input.jump || this.veh.driving)) this.emote = null;
       this.driveInput = input;
+      this.world.time = st; // elevators move with the server clock (shared/elevators.js)
       if (L.phase === 'ground' && this.veh.driving) this.veh.drive(input, dt);
       else if (L.phase === 'ground') {
         let left = dt;
@@ -855,6 +859,16 @@ export class Game {
     const Q = getSettings();
     this.lootR.update(dt, L.x, L.z, Q.lootDist);
     if (this.frame % 3 === 0) this.chestR.update(L.x, L.z, Q.chestDist);
+
+    // --- Mega Dome: elevators (same clock as my movement) and the video board ---
+    if (this.stadium) {
+      let info = null;
+      if (this.frame % 30 === 0) {
+        const secs = Math.max(0, Math.floor(st - (this.startedAt ?? st)));
+        info = { alive: this.alive, kind: this.kind, clock: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` };
+      }
+      this.stadium.update(st, dt, info);
+    }
 
     // --- storm ---
     if (this.zone) {

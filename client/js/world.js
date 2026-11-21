@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MAP_HALF } from '/shared/constants.js';
 import { mat, createFootball, bakeGroup, propMaterial } from './models.js';
+import { buildStadium, drawCrown } from './stadium.js';
 
 function canvasTex(w, h, draw, repeat) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -30,7 +31,11 @@ function fieldTexture(small) {
     g.fillStyle = '#fff'; g.font = 'bold 34px Arial'; g.textAlign = 'center';
     const nums = [10, 20, 30, 40, 50, 40, 30, 20, 10];
     nums.forEach((n, i) => { const x = w / 11 + ((i + 1) * (w * 9) / 11) / 10; g.fillText(n, x, 60); g.fillText(n, x, h - 34); });
-    if (!small) { g.beginPath(); g.arc(w / 2, h / 2, 50, 0, Math.PI * 2); g.stroke(); g.font = 'bold 40px Impact'; g.fillText('🏈', w / 2, h / 2 + 14); }
+    if (!small) { // Football Royale crown at midfield
+      g.fillStyle = 'rgba(20,40,110,.85)'; g.beginPath(); g.arc(w / 2, h / 2, 62, 0, Math.PI * 2); g.fill();
+      g.lineWidth = 6; g.strokeStyle = '#ffcc33'; g.stroke();
+      drawCrown(g, w / 2, h / 2 + 6, 36);
+    }
   });
 }
 
@@ -76,15 +81,17 @@ export function buildWorld(scene, map) {
     if (material.map) scene.add(m); else props.add(m);
     return m;
   };
-  const fieldBig = new THREE.MeshLambertMaterial({ map: fieldTexture(false) });
-  const fieldSmall = new THREE.MeshLambertMaterial({ map: fieldTexture(true) });
+  // (depth offset: fields win over the roads under them even from the blimp)
+  const fieldBig = new THREE.MeshLambertMaterial({ map: fieldTexture(false), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+  const fieldSmall = new THREE.MeshLambertMaterial({ map: fieldTexture(true), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
   for (const d of map.decor) {
+    if (d.dome) continue; // the Mega Dome's plaza/apron are drawn by stadium.js
     switch (d.type) {
       case 'field': flat(d.x, d.z, d.w, d.d, d.small ? fieldSmall : fieldBig, 0.04); break;
       case 'road': flat(d.x, d.z, d.w, d.d, mat('#4a4d52'), 0.02); break;
       case 'asphalt': flat(d.x, d.z, d.w, d.d, mat('#5b5e63'), 0.025); break;
       case 'pavement': flat(d.x, d.z, d.w, d.d, mat('#a9a9a2'), 0.015); break;
-      case 'floor': flat(d.x, d.z, d.w, d.d, mat(d.color), 0.05); break;
+      case 'floor': flat(d.x, d.z, d.w, d.d, mat(d.color), d.y ?? 0.05); break;
       case 'tint': flat(d.x, d.z, d.w, d.d, mat(d.color), d.y ?? 0.03); break; // pools, crops, tracks, upper floors
       case 'sign': { // building name boards (original names only), readable from the front
         const h = d.w * 0.2;
@@ -163,8 +170,10 @@ export function buildWorld(scene, map) {
   // ---- solid boxes merged into one mesh (fast!) ----
   const geos = [];
   const col = new THREE.Color();
+  // (the Mega Dome's glass, sloped roof and video board are drawn by stadium.js)
+  const special = new Set(['trunk', 'glass', 'endglass', 'board']);
   for (const b of map.boxes) {
-    if (b.kind === 'trunk') continue;
+    if (special.has(b.kind) || b.ramp || b.dome) continue;
     const w = b.max[0] - b.min[0], h = b.max[1] - b.min[1], d = b.max[2] - b.min[2];
     const g = new THREE.BoxGeometry(w, h, d);
     g.translate((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
@@ -239,13 +248,15 @@ export function buildWorld(scene, map) {
   storm.renderOrder = 2;
   scene.add(storm);
 
-  // nothing but the storm ever moves: skip the per-frame matrix updates of the static city
+  const stadium = map.decor.some((d) => d.type === 'megadome') ? buildStadium(scene, map) : null;
+
+  // nothing but the storm and the elevators ever moves: skip the per-frame matrix updates of the static city
   for (const o of scene.children) {
-    if (o === storm) continue;
+    if (o === storm || (stadium && stadium.dynamic.includes(o))) continue;
     o.updateMatrixWorld(true);
     o.traverse((x) => { x.matrixAutoUpdate = false; x.matrixWorldAutoUpdate = false; });
   }
-  return { storm, stormTex, sun };
+  return { storm, stormTex, sun, stadium };
 }
 
 // Turn the map into a 2D picture for the minimap.

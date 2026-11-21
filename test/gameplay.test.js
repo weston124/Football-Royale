@@ -21,7 +21,7 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
   try {
     const map = generateMap();
     const world = new World();
-    for (const b of map.boxes) world.add({ min: b.min.slice(), max: b.max.slice() });
+    world.addMap(map);
     for (const v of vehicleSpawns(map, 'normal')) for (const b of vehicleBoxes({ ...v, y: 0 }, VEHICLE_TYPES[v.type])) world.add(b); // parked cars
     // loot out in the open (not inside a building, where walking straight at it hits a wall)
     const open = (l) => !raycastWorld(world, l[1], l[2] + 0.5, l[3], 0, 1, 0, 80);
