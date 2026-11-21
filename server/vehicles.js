@@ -27,6 +27,7 @@ export class VehicleSystem {
 
   // (re)insert the vehicle's boxes into the collision World
   place(v) {
+    v._net = null; // (snapshot entry is encoded again)
     for (const b of v.boxes) this.m.world.remove(b.id);
     v.boxes = vehicleBoxes(v, VEHICLE_TYPES[v.type]).map((b) => this.m.world.add(b));
   }
@@ -37,7 +38,7 @@ export class VehicleSystem {
     const v = this.byId.get(m.id | 0);
     if (!v || v.driver || v.broken || p.phase !== 'ground' || !p.alive) return;
     if (distToVehicle(v, p.x, p.z) > VEHICLE.enterRange + 0.8 || Math.abs(p.y - v.y) > 2) return;
-    v.driver = p.id; v.speed = 0;
+    v.driver = p.id; v.speed = 0; v._net = null;
     p.vehicle = v;
     p.x = v.x; p.y = v.y; p.z = v.z; p.vx = p.vy = p.vz = 0;
     p.emote = 0; p.reloadUntil = 0; p.useUntil = 0;
@@ -50,7 +51,7 @@ export class VehicleSystem {
     const v = p.vehicle;
     if (!v) return;
     p.vehicle = null;
-    v.driver = 0; v.speed = 0;
+    v.driver = 0; v.speed = 0; v._net = null;
     const T = VEHICLE_TYPES[v.type];
     const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw), rx = -fz, rz = fx; // forward, right
     const side = T.W / 2 + PLAYER.radius + 0.35, end = T.L / 2 + PLAYER.radius + 0.35;
@@ -100,13 +101,13 @@ export class VehicleSystem {
       }
     }
     if (!ok) {
-      v.speed = 0;
+      v.speed = 0; v._net = null;
       p.pev.push(['vc', r2(v.x), r2(v.y), r2(v.z), r2(v.yaw)]);
       p.lastIn = { t, x: v.x, y: v.y, z: v.z };
       return;
     }
     const moved = Math.hypot(x - v.x, z - v.z) > 0.01 || Math.abs(yaw - v.yaw) > 0.002 || Math.abs(y - v.y) > 0.01;
-    v.x = x; v.y = y; v.z = z; v.yaw = yaw; v.speed = sp;
+    v.x = x; v.y = y; v.z = z; v.yaw = yaw; v.speed = sp; v._net = null;
     if (moved) this.place(v);
     p.x = x; p.y = y; p.z = z;
     p.lastIn = { t, x, y, z };
@@ -142,7 +143,7 @@ export class VehicleSystem {
   damage(vid, amount) {
     const v = this.byId.get(vid);
     if (!v || v.broken || this.m.kind === 'island' || this.m.state !== 'play') return;
-    v.hp -= amount;
+    v.hp -= amount; v._net = null;
     if (v.hp <= 0) {
       v.hp = 0; v.broken = true; v.speed = 0;
       this.m.events.push(['vb', v.id]);
@@ -165,7 +166,8 @@ export class VehicleSystem {
     const known = p.vhKnown || (p.vhKnown = new Map());
     const out = [];
     for (const v of this.list) {
-      const cur = v._net && v._netTick === tick ? v._net : (v._netTick = tick, v._net = JSON.stringify([
+      // encoded again only after it changed (parked vehicles cost nothing per tick)
+      const cur = v._net || (v._net = JSON.stringify([
         v.id, r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), Math.round(v.speed * 10) / 10, v.driver,
         Math.round((v.hp / VEHICLE_TYPES[v.type].hp) * 100), v.broken ? 1 : 0,
       ]));

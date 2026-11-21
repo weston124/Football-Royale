@@ -1,4 +1,4 @@
-// Drivable vehicles: types, spawn spots and the arcade car physics. Shared by server and browser.
+// Drivable vehicles: types (Tailgate Truck, Sideline Cart, Hatchback), spawn spots and the arcade car physics. Shared by server and browser.
 //
 // A vehicle is a rectangle (length L along its heading, width W) that we approximate with
 // circles of radius W/2 for its own collisions, and with square AABB boxes in the collision
@@ -15,6 +15,10 @@ export const VEHICLE_TYPES = {
   cart: {
     name: 'Sideline Cart', L: 2.9, W: 1.6, h: 1.3, max: 17, rev: 7, accel: 11, brake: 24, turn: 2.4, hp: 260,
     colors: ['#ffffff', '#ff7a1a', '#18b6c9', '#c44fd8'],
+  },
+  hatch: {
+    name: 'Hatchback', L: 4.0, W: 1.9, h: 1.3, max: 20, rev: 8, accel: 10, brake: 23, turn: 2.1, hp: 360,
+    colors: ['#d6342c', '#3c7be0', '#f4f4f4', '#2a2d33', '#e8b52e', '#36a85e', '#8a52c8', '#f08a2c'],
   },
 };
 export const VEHICLE = {

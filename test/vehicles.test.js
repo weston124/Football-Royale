@@ -26,12 +26,21 @@ function setup(opts = {}) {
 const enter = (m, p, v) => m.handle(p, { t: 'veh', id: v.id });
 const drive = (m, p, x, z, extra = {}) => m.handle(p, { t: 'in', x, y: 0, z, yaw: 0, pitch: 0, vy: 0, vs: 15, ...extra });
 
-test('vehicle spots are on open ground; ~16 in the city, 2 on Party Island', () => {
+test('vehicle spots are on open ground; 100+ in the city, 2 on Party Island', () => {
   const world = new World();
   for (const b of MAP.boxes) world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
   const city = vehicleSpawns(MAP, 'normal');
-  assert.ok(city.length >= 14 && city.length <= 20, `${city.length} vehicles`);
-  assert.ok(city.some((v) => v.type === 'truck') && city.some((v) => v.type === 'cart'));
+  assert.ok(city.length >= 100 && city.length <= 180, `${city.length} vehicles`);
+  for (const t of ['truck', 'cart', 'hatch']) assert.ok(city.filter((v) => v.type === t).length >= 15, `plenty of ${t}s`);
+  // vehicles don't overlap each other either (room to get in between parked cars)
+  for (const a of city) for (const b of city) {
+    if (a.id < b.id && Math.abs(a.x - b.x) < 6 && Math.abs(a.z - b.z) < 6) {
+      const A = VEHICLE_TYPES[a.type], B = VEHICLE_TYPES[b.type];
+      const ext = (v, T) => [Math.abs(Math.sin(v.yaw)) > 0.5 ? T.L / 2 : T.W / 2, Math.abs(Math.sin(v.yaw)) > 0.5 ? T.W / 2 : T.L / 2];
+      const [ax, az] = ext(a, A), [bx, bz] = ext(b, B);
+      assert.ok(Math.abs(a.x - b.x) > ax + bx + 0.8 || Math.abs(a.z - b.z) > az + bz + 0.8, `vehicles ${a.id} and ${b.id} too close`);
+    }
+  }
   for (const v of city.concat(vehicleSpawns(MAP, 'island'))) {
     const T = VEHICLE_TYPES[v.type];
     const big = { ...T, W: T.W + 1.5, L: T.L + 1.5 }; // a little room around it to get in and drive off
@@ -180,5 +189,43 @@ test('vh snapshot: moved vehicles only, once per change', () => {
   assert.equal(s.vh.length, 1);
   assert.deepEqual(s.vh[0].slice(0, 4), [1, 300, 0, 148]);
   assert.equal(s.vh[0][6], a.id, 'driver id');
+  // a parked vehicle that gets shot is sent again (its hp changed), once
+  m.veh.damage(2, 30);
+  m.sendSnapshots(clock + 0.1);
+  const s2 = JSON.parse(b.ws.sent.pop());
+  assert.ok(s2.vh.some((e) => e[0] === 2), 'damaged vehicle sent');
+  m.sendSnapshots(clock + 0.15);
+  const s3 = JSON.parse(b.ws.sent.pop());
+  assert.ok(!(s3.vh || []).some((e) => e[0] === 2), 'and only once');
+  m.close();
+});
+
+test('every car in the city is drivable: no static car boxes left, the parking lots are full of vehicles', () => {
+  assert.equal(MAP.boxes.filter((b) => b.kind === 'car').length, 0, 'no static car boxes');
+  const inLot = (x0, x1, z0, z1) => MAP.vehicles.filter((v) => v.x > x0 && v.x < x1 && v.z > z0 && v.z < z1).length;
+  // the 36 parked cars + 5 trucks of Tailgate Lot are all vehicles now
+  assert.equal(inLot(205, 365, 200, 310), 41, 'Tailgate Lot');
+  assert.ok(inLot(-180, -50, 160, 196) >= 20, 'Gridiron Galleria parking lot');
+  assert.ok(inLot(-410, -350, -180, -160) >= 3, 'Kickoff Academy parking lot');
+  assert.equal(inLot(-250, -205, -195, -175), 3, 'Fuel Stop pumps');
+});
+
+test('the Hatchback drives like the others and stops at walls', () => {
+  const world = new World();
+  for (const b of MAP.boxes) world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
+  const car = { id: 98, type: 'hatch', x: -15, y: 0, z: 295, yaw: Math.PI, speed: 0 };
+  for (let i = 0; i < 60 * 4; i++) stepVehicle(world, car, { f: 1, s: 0 }, 1 / 60);
+  assert.ok(car.z + VEHICLE_TYPES.hatch.L / 2 < 313.65 && car.z > 300, `stopped at the Hall of Champs wall, z=${car.z.toFixed(2)}`);
+  const m = new Match({ code: 'HATCH', mode: 'nobuild' });
+  const a = m.addHuman(fakeWs(), 'A', null, 7);
+  m.start();
+  const v = m.veh.list.find((x) => x.type === 'hatch');
+  Object.assign(v, { x: 300, y: 0, z: 150, yaw: 0 }); m.veh.place(v);
+  Object.assign(a, { phase: 'ground', x: 302, y: 0, z: 150, onGround: true, lastIn: null });
+  enter(m, a, v);
+  assert.equal(a.vehicle, v);
+  clock += 0.5;
+  drive(m, a, 300, 141, { vs: 18 });
+  assert.equal(v.z, 141);
   m.close();
 });

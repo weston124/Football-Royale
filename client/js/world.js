@@ -85,6 +85,27 @@ export function buildWorld(scene, map) {
       case 'asphalt': flat(d.x, d.z, d.w, d.d, mat('#5b5e63'), 0.025); break;
       case 'pavement': flat(d.x, d.z, d.w, d.d, mat('#a9a9a2'), 0.015); break;
       case 'floor': flat(d.x, d.z, d.w, d.d, mat(d.color), 0.05); break;
+      case 'tint': flat(d.x, d.z, d.w, d.d, mat(d.color), d.y ?? 0.03); break; // pools, crops, tracks, upper floors
+      case 'sign': { // building name boards (original names only), readable from the front
+        const h = d.w * 0.2;
+        const tex = canvasTex(512, Math.round(512 * h / d.w), (g, w, hh) => {
+          g.fillStyle = d.bg; g.fillRect(0, 0, w, hh);
+          g.strokeStyle = d.fg; g.lineWidth = 8; g.strokeRect(6, 6, w - 12, hh - 12);
+          g.fillStyle = d.fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+          let fs = hh * 0.62; g.font = `bold ${fs}px Impact, Arial Black`;
+          while (g.measureText(d.text).width > w * 0.88 && fs > 10) { fs -= 2; g.font = `bold ${fs}px Impact, Arial Black`; }
+          g.fillText(d.text, w / 2, hh / 2 + 2);
+        });
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(d.w, h), new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
+        m.position.set(d.x, d.y, d.z); m.rotation.y = d.rot || 0;
+        scene.add(m); break;
+      }
+      case 'slide': { // water slide tube from the tower top down to the pool
+        const mid = new THREE.Vector3((d.x0 + d.x1) / 2 + 3, d.y0 * 0.45, (d.z0 + d.z1) / 2 - 3);
+        const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(d.x0, d.y0 + 0.3, d.z0), mid, new THREE.Vector3(d.x1, 0.4, d.z1)]);
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.7, 8, false), mat(d.color));
+        props.add(tube); break;
+      }
       case 'goalpost': {
         const s = d.small ? 0.6 : 1, y = mat('#ffd23f');
         const g = new THREE.Group();
@@ -178,6 +199,21 @@ export function buildWorld(scene, map) {
       }
     }
   }
+  // windows on the outside walls of multi-story buildings: one band per 4 m floor, on long wall pieces
+  for (const b of map.boxes) {
+    if (b.kind !== 'facade') continue;
+    const alongX = b.max[0] - b.min[0] > b.max[2] - b.min[2], len = alongX ? b.max[0] - b.min[0] : b.max[2] - b.min[2];
+    if (len < 2.5) continue;
+    const cx = (b.min[0] + b.max[0]) / 2, cz = (b.min[2] + b.max[2]) / 2;
+    for (let y = 2.2; y + 0.7 <= b.max[1] - 0.4; y += 4) {
+      if (y - 0.7 < b.min[1]) continue;
+      for (const s of [-1, 1]) {
+        const g = new THREE.BoxGeometry(alongX ? len * 0.84 : 0.08, 1.4, alongX ? 0.08 : len * 0.84);
+        g.translate(alongX ? cx : (s < 0 ? b.min[0] - 0.04 : b.max[0] + 0.04), y, alongX ? (s < 0 ? b.min[2] - 0.04 : b.max[2] + 0.04) : cz);
+        winGeos.push(g);
+      }
+    }
+  }
   if (winGeos.length) scene.add(new THREE.Mesh(mergeGeometries(winGeos), winMat));
 
   // ---- trees (instanced) ----
@@ -227,7 +263,8 @@ export function drawMapImage(map, size) {
   g.fillStyle = '#2a83c9'; g.fillRect(0, 0, size, size);
   g.fillStyle = '#5aa448'; g.fillRect(2, 2, size - 4, size - 4);
   for (const d of map.decor) {
-    const fill = { field: '#3f9c3f', road: '#666', asphalt: '#777', pavement: '#aaa', floor: null }[d.type];
+    const fill = d.type === 'tint' && d.w > 2.5 && d.d > 2.5 ? '#' + d.color.toString(16).padStart(6, '0')
+      : { field: '#3f9c3f', road: '#666', asphalt: '#777', pavement: '#aaa', floor: null }[d.type];
     if (!fill || d.w == null) continue;
     g.fillStyle = fill; g.fillRect(X(d.x - d.w / 2), Z(d.z - d.d / 2), d.w * k, d.d * k);
   }

@@ -6,7 +6,8 @@ import WebSocket from 'ws';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { World, stepFalling, stepPlayer } from '../shared/physics.js';
+import { World, stepFalling, stepPlayer, raycastWorld } from '../shared/physics.js';
+import { vehicleSpawns, vehicleBoxes, VEHICLE_TYPES } from '../shared/vehicles.js';
 import { generateMap } from '../shared/map.js';
 import { createSnapshotDecoder } from '../shared/netcodec.js';
 
@@ -21,6 +22,9 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
     const map = generateMap();
     const world = new World();
     for (const b of map.boxes) world.add({ min: b.min.slice(), max: b.max.slice() });
+    for (const v of vehicleSpawns(map, 'normal')) for (const b of vehicleBoxes({ ...v, y: 0 }, VEHICLE_TYPES[v.type])) world.add(b); // parked cars
+    // loot out in the open (not inside a building, where walking straight at it hits a wall)
+    const open = (l) => !raycastWorld(world, l[1], l[2] + 0.5, l[3], 0, 1, 0, 80);
     const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
     const decode = createSnapshotDecoder();
     const st = { me: null, loot: new Map(), ents: new Map(), pieces: 0, hits: 0, corr: null, started: null };
@@ -53,7 +57,7 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
     while (!st.corr) await wait(50);
     const p = { x: st.corr[1], y: st.corr[2], z: st.corr[3], vx: 0, vy: 0, vz: 0, phase: 'fall', onGround: false };
     // pick a floor weapon on open ground and steer toward it while falling
-    const drop = [...st.loot.values()].find((l) => l[4].w && l[4].w !== 'whistle' && l[2] === 0 && Math.hypot(l[1] - p.x, l[3] - p.z) < 260);
+    const drop = [...st.loot.values()].find((l) => l[4].w && l[4].w !== 'whistle' && l[2] === 0 && open(l) && Math.hypot(l[1] - p.x, l[3] - p.z) < 260);
     assert.ok(drop, 'found loot');
     const send = () => ws.send(JSON.stringify({ t: 'in', x: p.x, y: p.y, z: p.z, yaw: p.yaw || 0, pitch: 0, ph: p.phase }));
     const steer = (tx, tz) => {
@@ -69,7 +73,7 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
     let got = false;
     const tried = new Set();
     for (let attempt = 0; attempt < 6 && !got; attempt++) {
-      const goal = [...st.loot.values()].filter((l) => l[4].w && l[4].w !== 'whistle' && !tried.has(l[0]))
+      const goal = [...st.loot.values()].filter((l) => l[4].w && l[4].w !== 'whistle' && !tried.has(l[0]) && open(l))
         .sort((u, v) => Math.hypot(u[1] - p.x, u[3] - p.z) - Math.hypot(v[1] - p.x, v[3] - p.z))[0];
       if (!goal) break;
       tried.add(goal[0]);

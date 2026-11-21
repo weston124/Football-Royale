@@ -1,6 +1,8 @@
 // Builds the Giant Sports City. Same seed => same city on server and every browser.
 import { makeRng } from './rng.js';
 import { MAP_HALF } from './constants.js';
+import { buildDistricts } from './districts.js';
+import { VEHICLE_TYPES } from './vehicles.js';
 
 export const MAP_SEED = 20261119;
 
@@ -116,22 +118,23 @@ export function generateMap(seed = MAP_SEED) {
   pois.push({ name: 'Tailgate Lot', x: 290, z: 260, r: 95 });
   reserve(290, 260, 180, 140);
   decor.push({ type: 'asphalt', x: 290, z: 260, w: 170, d: 130 });
-  const carColors = [0xd23b3b, 0x3b6fd2, 0xf0f0f0, 0x222222, 0xe6c13a, 0x3bb36a, 0x8d4fc4];
-  // a few parking spaces hold drivable Tailgate Trucks instead of parked cars (same random
-  // numbers are drawn either way, so the rest of the city doesn't change)
+  // Every car in the lot is a drivable vehicle (there are no static car boxes anywhere any
+  // more). The same random numbers are drawn as when most of them were parked boxes, so the
+  // rest of the city doesn't change.
+  const lotTypes = ['hatch', 'truck', 'hatch', 'cart', 'truck', 'hatch', 'truck'];
   const driveSlots = { '0,3': 0, '1,8': 1, '2,1': 2, '3,6': 3, '4,10': 0 };
   for (let row = 0; row < 5; row++) for (let i = 0; i < 12; i++) {
     const slot = driveSlots[`${row},${i}`];
+    const yaw = row % 2 ? 0 : Math.PI;
     if (slot !== undefined) {
-      if (rnd() >= 0.35) { rnd.range(-1, 1); rnd.pick(carColors); }
-      vehicles.push({ type: 'truck', x: 220 + i * 12, z: 210 + row * 24, yaw: row % 2 ? 0 : Math.PI, color: slot });
+      if (rnd() >= 0.35) { rnd.range(-1, 1); rnd(); }
+      vehicles.push({ type: 'truck', x: 220 + i * 12, z: 210 + row * 24, yaw, color: slot });
       continue;
     }
     if (rnd() < 0.35) continue;
     const x = 220 + i * 12 + rnd.range(-1, 1), z = 210 + row * 24;
-    const c = rnd.pick(carColors);
-    box(x - 1, 0, z - 2.3, x + 1, 1.1, z + 2.3, c, 'car');
-    box(x - 0.9, 1.1, z - 1.2, x + 0.9, 1.8, z + 1.0, c, 'car');
+    const c = Math.floor(rnd() * 7), type = lotTypes[(c + row + i) % lotTypes.length];
+    vehicles.push({ type, x: Math.round(x * 100) / 100, z, yaw, color: (c + i) % (type === 'hatch' ? 8 : 4) });
   }
   for (let i = 0; i < 6; i++) {
     const x = 225 + i * 26, z = 320;
@@ -142,6 +145,12 @@ export function generateMap(seed = MAP_SEED) {
   box(250, 0, 196, 262, 3.2, 201, 0xffb84d, 'box');
   scatterLoot(290, 260, 70, 10);
   chests.push({ x: 290, y: 0, z: 258 }, { x: 336, y: 0, z: 204 });
+
+  // ---------------- New districts (shared/districts.js) ----------------
+  // Skyline Heights, Gridiron Galleria + Huddle Shops, Fuel Stop, Kickoff Academy, Splash Zone,
+  // Signal Hill, three farms, three neighborhoods and the roads between them. Built before any
+  // trees so the reserved areas stay clear.
+  buildDistricts({ seed, box, boxes, decor, loot, chests, pois, reserve, vehicles, trees });
 
   // ---------------- Training Camp Woods ----------------
   pois.push({ name: 'Training Camp Woods', x: -300, z: 260, r: 110 });
@@ -234,8 +243,8 @@ export function generateMap(seed = MAP_SEED) {
     if (isReserved(x, z, 3) || Math.abs(x) < 8 || Math.abs(z) < 8 || Math.abs(Math.abs(z) - 200) < 7) continue;
     trees.push({ x, z, h: rnd.range(6, 12), r: rnd.range(2, 3.5), pine: rnd() < 0.4 });
   }
-  // Random floor loot in the wild
-  for (let i = 0; i < 90; i++) {
+  // Random floor loot in the wild (fewer since the new districts brought ~150 indoor spots)
+  for (let i = 0; i < 60; i++) {
     const x = rnd.range(-MAP_HALF + 20, MAP_HALF - 20), z = rnd.range(-MAP_HALF + 20, MAP_HALF - 20);
     loot.push({ x, y: 0, z });
   }
@@ -258,5 +267,13 @@ export function generateMap(seed = MAP_SEED) {
     { type: 'truck', x: 0, z: 160, yaw: 0, color: 2 },
     { type: 'cart', x: -250, z: 7.5, yaw: Math.PI / 2, color: 1 }, // Snack Shack Row
   );
-  return { boxes, decor, trees, loot, chests, pois, vehicles };
+  // Safety net: a vehicle spot must have room around it to get in and drive off (the city
+  // layout is checked by test/vehicles.test.js; this only drops a spot a tree or a random
+  // house happened to land on).
+  const clear = (v) => {
+    const T = VEHICLE_TYPES[v.type], c = Math.abs(Math.cos(v.yaw)), s = Math.abs(Math.sin(v.yaw));
+    const hx = ((T.W + 1.5) * c + (T.L + 1.5) * s) / 2, hz = ((T.W + 1.5) * s + (T.L + 1.5) * c) / 2;
+    return !boxes.some((b) => b.max[1] > 0.75 && b.min[1] < T.h + 0.4 && b.min[0] < v.x + hx && b.max[0] > v.x - hx && b.min[2] < v.z + hz && b.max[2] > v.z - hz);
+  };
+  return { boxes, decor, trees, loot, chests, pois, vehicles: vehicles.filter(clear) };
 }

@@ -58,19 +58,42 @@ function buildCart(color) {
   g.add(box(1.56, 0.16, 0.12, CHROME, 0, 0.42, -1.42));                 // bumper
   return g;
 }
+// A small original hatchback: rounded-ish cabin at the back, sporty stripe over the hood.
+function buildHatch(color) {
+  const g = new THREE.Group();
+  g.add(box(1.86, 0.6, 3.96, color, 0, 0.66, 0));                       // lower body
+  g.add(box(1.72, 0.62, 2.3, color, 0, 1.27, 0.35));                    // cabin
+  g.add(box(1.76, 0.4, 1.96, GLASS, 0, 1.3, 0.35));                     // side windows
+  g.add(box(1.58, 0.44, 0.06, GLASS, 0, 1.3, -0.82));                   // windshield
+  g.add(box(1.58, 0.38, 0.06, GLASS, 0, 1.32, 1.52));                   // rear window
+  g.add(box(1.76, 0.08, 2.1, DARK, 0, 1.62, 0.35));                     // roof rack
+  g.add(box(0.34, 0.02, 1.4, '#ffffff', -0.25, 0.97, -1.25));           // twin hood stripes
+  g.add(box(0.34, 0.02, 1.4, '#ffffff', 0.25, 0.97, -1.25));
+  g.add(box(1.92, 0.14, 0.04, '#ffffff', 0, 0.62, 1.99));               // stripe on the hatch
+  for (const z of [-2.0, 2.0]) g.add(box(1.9, 0.22, 0.14, CHROME, 0, 0.44, z)); // bumpers
+  for (const x of [-0.66, 0.66]) {
+    g.add(box(0.34, 0.15, 0.05, '#fffbe0', x, 0.82, -2.0, { emissive: '#bba64a' })); // headlights
+    g.add(box(0.28, 0.15, 0.05, '#ff3030', x, 0.82, 2.0, { emissive: '#801010' }));  // tail lights
+  }
+  g.add(box(0.5, 0.12, 0.05, '#ffcc33', 0, 0.62, -2.03));               // grille badge (a football)
+  return g;
+}
+const BUILD = { truck: buildTruck, cart: buildCart, hatch: buildHatch };
 const WHEEL_GEO = new THREE.CylinderGeometry(1, 1, 1, 14);
 const HELMET_GEO = new THREE.SphereGeometry(0.19, 12, 10);
 const WHEELS = {
   truck: { r: 0.42, w: 0.32, pos: [[-0.98, -1.55], [0.98, -1.55], [-0.98, 1.55], [0.98, 1.55]] },
   cart: { r: 0.27, w: 0.22, pos: [[-0.72, -0.95], [0.72, -0.95], [-0.72, 0.95], [0.72, 0.95]] },
+  hatch: { r: 0.36, w: 0.28, pos: [[-0.9, -1.3], [0.9, -1.3], [-0.9, 1.3], [0.9, 1.3]] },
 };
-const SEAT = { truck: [-0.45, 0.55, -0.2], cart: [-0.33, 0.95, 0.2] };
-const bodyCache = new Map();
-export function createVehicleMesh(type, color) {
+const SEAT = { truck: [-0.45, 0.55, -0.2], cart: [-0.33, 0.95, 0.2], hatch: [-0.42, 0.5, 0.1] };
+const bodyCache = new Map(), parkedCache = new Map();
+const bodyGeo = (type, color) => {
   const key = type + color;
-  if (!bodyCache.has(key)) bodyCache.set(key, bakeGroup(type === 'truck' ? buildTruck(color) : buildCart(color)));
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(bodyCache.get(key), propMaterial));
+  if (!bodyCache.has(key)) bodyCache.set(key, bakeGroup(BUILD[type](color)));
+  return bodyCache.get(key);
+};
+function addWheels(g, type) {
   const W = WHEELS[type], wheels = [];
   for (const [x, z] of W.pos) {
     const pivot = new THREE.Group(); pivot.position.set(x, W.r, z);
@@ -79,6 +102,23 @@ export function createVehicleMesh(type, color) {
     const hub = new THREE.Mesh(BOX, mat(CHROME)); hub.scale.set(W.w + 0.02, W.r * 0.8, W.r * 0.3); spin.add(hub); // a spoke you can see turning
     g.add(pivot); wheels.push({ pivot, spin, front: z < 0 });
   }
+  return wheels;
+}
+// Body + wheels baked into one geometry: what parked / far vehicles are drawn with (instanced).
+function parkedGeo(type, color) {
+  const key = type + color;
+  if (!parkedCache.has(key)) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(bodyGeo(type, color), propMaterial));
+    addWheels(g, type);
+    parkedCache.set(key, bakeGroup(g));
+  }
+  return parkedCache.get(key);
+}
+export function createVehicleMesh(type, color) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(bodyGeo(type, color), propMaterial));
+  const wheels = addWheels(g, type);
   // a simple seated driver: jersey + helmet in their colors (the full body stays hidden)
   const bust = new THREE.Group();
   const [sx, sy, sz] = SEAT[type];
@@ -93,6 +133,8 @@ export function createVehicleMesh(type, color) {
 
 // ---------- smoke from damaged / broken-down vehicles ----------
 const PUFF_GEO = new THREE.SphereGeometry(0.35, 8, 6);
+const DETAIL = 16; // m: closer than this a parked vehicle gets its full model (see-through cart windshield)
+const _m4 = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 
 export class Vehicles {
   constructor(game) {
@@ -105,21 +147,53 @@ export class Vehicles {
     this.reset(game.kind);
   }
 
+  // Every vehicle has a slot in an InstancedMesh per model+color (one draw call each, used while
+  // it's parked or far away) and gets its full model (turning wheels, driver) only when it's
+  // close to the camera, moving or driven.
   reset(kind) {
     this.kind = kind;
     for (const v of this.list.values()) this.removeBoxes(v);
+    for (const im of this.inst?.values() || []) im.dispose();
     this.group.clear();
     this.list.clear();
     this.driving = null;
-    for (const s of vehicleSpawns(this.g.map, kind)) {
-      const T = VEHICLE_TYPES[s.type];
-      const mesh = createVehicleMesh(s.type, T.colors[s.color % T.colors.length]);
-      const v = { id: s.id, type: s.type, x: s.x, y: 0, z: s.z, yaw: s.yaw, speed: 0, driver: 0, hp: 100, broken: 0, buf: [], boxes: [], mesh, roll: 0, steer: 0, smokeT: 0 };
-      this.group.add(mesh);
+    this.inst = new Map();
+    const spawns = vehicleSpawns(this.g.map, kind);
+    const count = new Map();
+    for (const s of spawns) { const k = s.type + ':' + (s.color % VEHICLE_TYPES[s.type].colors.length); count.set(k, (count.get(k) || 0) + 1); }
+    for (const [k, n] of count) {
+      const [type, ci] = k.split(':');
+      const im = new THREE.InstancedMesh(parkedGeo(type, VEHICLE_TYPES[type].colors[ci]), propMaterial, n);
+      im.frustumCulled = false; // instances are all over the map; ~12 meshes, cheap to always submit
+      im.count = 0;
+      this.inst.set(k, im);
+      this.group.add(im);
+    }
+    for (const s of spawns) {
+      const T = VEHICLE_TYPES[s.type], ci = s.color % T.colors.length, im = this.inst.get(s.type + ':' + ci);
+      const v = { id: s.id, type: s.type, color: T.colors[ci], x: s.x, y: 0, z: s.z, yaw: s.yaw, speed: 0, driver: 0, hp: 100, broken: 0, buf: [], boxes: [], mesh: null, im, ii: im.count++, shown: null, roll: 0, steer: 0, smokeT: 0, movedAt: -1e9 };
       this.list.set(v.id, v);
       this.placeBoxes(v);
-      this.pose(v, v);
+      this.showInstance(v, true);
     }
+  }
+
+  // parked look (instance) on/off; `on` also refreshes its position
+  showInstance(v, on) {
+    if (on) {
+      _m4.compose(_p.set(v.x, v.y, v.z), _q.setFromEuler(_e.set(0, v.yaw, v.broken ? 0.06 : 0)), _s.set(1, 1, 1));
+      v.shown = { x: v.x, y: v.y, z: v.z, yaw: v.yaw, broken: v.broken };
+    } else {
+      _m4.makeScale(0, 0, 0);
+      v.shown = null;
+    }
+    v.im.setMatrixAt(v.ii, _m4);
+    v.im.instanceMatrix.needsUpdate = true;
+  }
+  setDetailed(v, on) {
+    if (on && !v.mesh) { v.mesh = createVehicleMesh(v.type, v.color); v.roll = 0; }
+    if (on && !v.mesh.parent) { this.group.add(v.mesh); this.showInstance(v, false); }
+    if (!on && v.mesh && v.mesh.parent) { this.group.remove(v.mesh); this.showInstance(v, true); }
   }
 
   // keep the vehicle's collision boxes in my World (I bump into parked and moving vehicles)
@@ -206,7 +280,7 @@ export class Vehicles {
 
   // Once per frame, after other players were interpolated.
   update(dt, renderT, input) {
-    const L = this.g.local, drivers = new Map();
+    const L = this.g.local, drivers = new Map(), cam = this.g.camera.position, now = nowS();
     for (const v of this.list.values()) {
       let s;
       if (this.driving && this.driving.id === v.id) {
@@ -219,11 +293,16 @@ export class Vehicles {
         v.steer *= 0.9;
       }
       v.x = s.x; v.y = s.y; v.z = s.z; v.yaw = s.yaw; v.speed = s.sp ?? v.speed;
-      if (Math.hypot(v.x - v.bx, v.z - v.bz) > 0.05 || Math.abs(v.yaw - v.byaw) > 0.01) this.placeBoxes(v);
-      this.pose(v, s, dt);
+      if (Math.hypot(v.x - v.bx, v.z - v.bz) > 0.05 || Math.abs(v.yaw - v.byaw) > 0.01) { this.placeBoxes(v); v.movedAt = now; }
       const driver = this.driving && this.driving.id === v.id ? this.g.myId : v.driver;
       if (driver) drivers.set(driver, v);
-      this.dressDriver(v, driver);
+      // full model when close, driven or just moved; otherwise the instanced parked model
+      const near = Math.abs(v.x - cam.x) < DETAIL && Math.abs(v.z - cam.z) < DETAIL && (v.x - cam.x) ** 2 + (v.z - cam.z) ** 2 < DETAIL * DETAIL;
+      this.setDetailed(v, near || !!driver || now - v.movedAt < 2);
+      if (v.mesh && v.mesh.parent) {
+        this.pose(v, s, dt);
+        this.dressDriver(v, driver);
+      } else if (!v.shown || v.shown.x !== v.x || v.shown.z !== v.z || v.shown.yaw !== v.yaw || v.shown.y !== v.y || v.shown.broken !== v.broken) this.showInstance(v, true);
       // smoke when badly damaged or broken down
       if ((v.broken || v.hp < 35) && Math.abs(v.x - L.x) < 120 && Math.abs(v.z - L.z) < 120) {
         v.smokeT -= dt;
@@ -293,13 +372,14 @@ export class Vehicles {
 
   mapIcons() {
     const out = [];
-    for (const v of this.list.values()) out.push({ x: v.x, z: v.z, yaw: v.yaw, truck: v.type === 'truck', broken: v.broken, mine: !!this.driving && this.driving.id === v.id });
+    for (const v of this.list.values()) out.push({ x: v.x, z: v.z, yaw: v.yaw, len: VEHICLE_TYPES[v.type].L, broken: v.broken, mine: !!this.driving && this.driving.id === v.id });
     return out;
   }
 
   dispose() {
     for (const v of this.list.values()) this.removeBoxes(v);
     for (const p of this.puffs) p.m.material.dispose();
+    for (const im of this.inst.values()) im.dispose(); // (the baked geometries are shared and cached)
     this.g.scene.remove(this.group);
     this.list.clear();
   }

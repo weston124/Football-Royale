@@ -24,6 +24,7 @@ await page.fill('#a-pass', 'testing123');
 await page.check('#a-age');
 await page.click('#a-go');
 await page.waitForSelector('#menu:not(.hidden)', { timeout: 30000 });
+await page.click('button[data-tab=rooms]');
 await page.click('#create');
 await page.waitForSelector('#lobby-start:not(.hidden)', { timeout: 30000 });
 await page.click('#lobby-start');
