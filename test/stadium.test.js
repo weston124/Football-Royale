@@ -152,7 +152,7 @@ test('elevators: a player on the cab rides it up and down (60 fps, server 20 Hz,
       maxErr = Math.max(maxErr, Math.abs(p.y - h));
       top = Math.max(top, p.y);
     }
-    assert.ok(maxErr < (tstep > dt ? 0.9 : 0.25), `rider follows the cab (max error ${maxErr.toFixed(3)} at dt ${dt.toFixed(3)})`);
+    assert.ok(maxErr < 0.25, `rider follows the cab (max error ${maxErr.toFixed(3)} at dt ${dt.toFixed(3)})`);
     assert.ok(Math.abs(top - DOME.L2) < 0.05, `reaches the top (${top})`);
     // ride up to L1 and walk out of the door
     const q = { x: cx, y: 0, z: cz, vx: 0, vy: 0, vz: 0, onGround: true };
@@ -298,4 +298,49 @@ test('bots that end up on an upper level of the dome find their way back down', 
   const results = active.map((b) => `${b._spot}: ${down.has(b) ? down.get(b).toFixed(1) + ' s' : `STILL UP at ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)}`}`);
   assert.equal(down.size, active.length, results.join('\n'));
   m.close(); setClock(null);
+});
+
+// Is any solid map box inside a standing player's head/body (above knee height)?
+function headInside(world, p) {
+  const r = PLAYER.radius;
+  for (const b of world.query(p.x - r, p.z - r, p.x + r, p.z + r)) {
+    if (b.ramp) continue;
+    if (p.x + r <= b.min[0] || p.x - r >= b.max[0] || p.z + r <= b.min[2] || p.z - r >= b.max[2]) continue;
+    if (b.max[1] > p.y + PLAYER.stepUp + 0.05 && b.min[1] < p.y + PLAYER.height) return b;
+  }
+  return null;
+}
+
+test('headroom: climbing any stadium stairs (even hugging the open side) never puts your head in a floor', () => {
+  const world = staticWorld();
+  const { HZ, OUT } = DOME;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const [x0, x1] of [[50, 69.5], [69, 77]]) {
+    // straight up; and zig-zagging: a few steps up, then a sidestep toward the open side, ...
+    for (const zig of [0, 1]) {
+      const z = sz * (HZ + OUT - 1.6);
+      const p = { x: sx * x0, y: x0 === 50 ? 0 : DOME.L1, z, vx: 0, vy: 0, vz: 0, onGround: true };
+      const yaw = Math.atan2(-sx, 0), open = -sz * sx; // strafe sign that moves toward the open side
+      for (let i = 0; i < 12 * 60 && Math.abs(p.x) < x1; i++) {
+        const side = zig && i % 30 >= 27; // (reproduces the bug without the side walls)
+        stepPlayer(world, p, { f: side ? 0 : 1, s: side ? open : 0, yaw }, 1 / 60);
+        const hit = headInside(world, p);
+        assert.ok(!hit, `stairs ${sx},${sz} zig ${zig}: head in ${hit && hit.kind} at ${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`);
+      }
+    }
+  }
+});
+
+test('headroom: a rider standing half in the doorway is pulled into the cab and never ends up inside a floor', () => {
+  const world = new World(); world.addMap(map);
+  for (const e of map.elevators) {
+    const cz = (e.z0 + e.z1) / 2, out = e.door === 2 ? -1 : 1;
+    let t = departure(e, 0) - 0.5;
+    const p = { x: out < 0 ? e.x0 + 0.05 : e.x1 - 0.05, y: 0, z: cz, vx: 0, vy: 0, vz: 0, onGround: true };
+    for (let i = 0; i < elevatorPeriod(e) * 60; i++) {
+      world.time = t; t += 1 / 60;
+      stepPlayer(world, p, { f: 0, s: 0, yaw: 0 }, 1 / 60);
+      const hit = headInside(world, p);
+      assert.ok(!hit, `elevator ${e.id}: inside ${hit && hit.kind} at ${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`);
+    }
+  }
 });

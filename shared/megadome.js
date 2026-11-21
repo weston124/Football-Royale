@@ -143,6 +143,9 @@ export function buildMegaDome({ box: mapBox, decor, loot, chests, pois, elevator
     holesL2.push([sx > 0 ? b0 : -bEnd, Z0, sx > 0 ? bEnd : -b0, Z1]);
     // railings along the stairwell openings
     const zr = sz > 0 ? [zIn - 0.15, zIn] : [-zIn, -zIn + 0.15];
+    // side walls under the floor above, so nobody climbs the stairs with their head inside a slab
+    box(sx > 0 ? a0 : -aEnd, 0, zr[0], sx > 0 ? aEnd : -a0, L1 - SLAB, zr[1], C.wall, 'wall');
+    box(sx > 0 ? b0 : -bEnd, L1, zr[0], sx > 0 ? bEnd : -b0, L2 - SLAB, zr[1], C.wall, 'wall');
     box(sx > 0 ? a0 : -aEnd, L1, zr[0], sx > 0 ? aEnd : -a0, L1 + 1, zr[1], C.rail, 'rail').stairRail = [0, L1];
     box(sx * a0 - (sx > 0 ? 0.15 : 0), L1, Z0, sx * a0 + (sx > 0 ? 0 : 0.15), L1 + 1, Z1, C.rail, 'rail');
     box(sx > 0 ? b0 : -bEnd, L2, zr[0], sx > 0 ? bEnd : -b0, L2 + 1, zr[1], C.rail, 'rail').stairRail = [L1, L2];

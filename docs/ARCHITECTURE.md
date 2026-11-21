@@ -108,6 +108,9 @@ Everything is a rectangular "ring" around the podium rectangle |x| = 62, |z| = 3
 | 27.4-37.2 | 11.2 (L2) | upper concourse under the upper deck |
 Stairs (12 x 0.6 m, then 7 x 0.57 m) along the outer wall near each corner link L0 -> L1 -> L2; an elevator in
 each corner serves all three. Floors L1/L2 are 0.4 m `slab` boxes with holes for stairwells and shafts.
+`stepPlayer` has no headroom check on step-ups, so every flight has a side wall under the floor above (you can't
+drift sideways under the slab while climbing), and a cab rider is kept fully inside the shaft while it moves
+(tests: "headroom" in `test/stadium.test.js`).
 The roof is a barrel vault of `ramp` boxes (walkable, `roofY(z)`) with a 96 x 38 m opening (|x| < 48, |z| < 19)
 over the field for skydivers; the video board (|x| < 24, |z| < 6, y 30-41) is solid. Two giant arches (visual)
 hold the board. Glass (`kind: 'glass'`) is solid for movement and bullets.

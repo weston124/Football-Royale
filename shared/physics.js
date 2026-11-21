@@ -115,13 +115,17 @@ export function supportHeight(world, x, y, z) {
 
 // Top of the elevator cab under (x, z) (centre over it), or null.
 export function liftTop(world, x, z) {
+  const b = liftAt(world, x, z);
+  return b ? b.max[1] : null;
+}
+function liftAt(world, x, z) {
   if (!world.elevators.length) return null;
-  let top = null;
+  let best = null;
   for (const b of world.movers()) {
     if (!b.lift || x < b.min[0] || x > b.max[0] || z < b.min[2] || z > b.max[2]) continue;
-    if (top === null || b.max[1] > top) top = b.max[1];
+    if (!best || b.max[1] > best.max[1]) best = b;
   }
-  return top;
+  return best;
 }
 
 export function bodyBlocked(world, x, y, z, onGround, ignore = null) { return blocked(world, x, y, z, onGround, ignore); }
@@ -196,15 +200,26 @@ export function stepPlayer(world, p, input, dt) {
     p.onGround = false;
   } else {
     const sup = supportHeight(world, p.x, p.y, p.z);
-    if (ny <= sup + 0.02 && (p.onGround || ny <= sup)) {
+    const lt = world.elevators.length ? liftTop(world, p.x, p.z) : null;
+    if (p.riding && lt !== null && lt <= p.y + PLAYER.stepUp) {
+      // riding a cab: stay on its floor however far it moved down since the last (slow) frame
+      p.y = Math.max(sup, lt); p.vy = 0; p.onGround = true;
+      // while the cab moves, keep the whole body inside the shaft (not sticking out of a doorway
+      // into the floors it passes)
+      const cab = liftAt(world, p.x, p.z), r = PLAYER.radius + 0.02;
+      if (cab && !cab.elevator.stops.some((st) => Math.abs(st - cab.max[1]) < 0.01)) {
+        p.x = Math.max(cab.min[0] + r, Math.min(cab.max[0] - r, p.x));
+        p.z = Math.max(cab.min[2] + r, Math.min(cab.max[2] - r, p.z));
+      }
+    } else if (ny <= sup + 0.02 && (p.onGround || ny <= sup)) {
       // snap down slopes/steps when grounded, land when falling
       if (p.onGround && p.y - sup > PLAYER.stepUp) { p.y = ny; p.onGround = false; }
       else { p.y = sup; p.vy = 0; p.onGround = true; }
     } else {
       if (p.onGround && p.y - sup < 0.35) { p.y = sup; p.vy = 0; } // stick to ramps going down
-      else if (p.onGround && p.y - sup < 2 && liftTop(world, p.x, p.z) === sup) { p.y = sup; p.vy = 0; } // ride a cab down (even at low fps)
       else { p.y = ny; p.onGround = false; }
     }
+    p.riding = lt !== null && p.onGround && Math.abs(p.y - lt) < 1e-6;
   }
 }
 
