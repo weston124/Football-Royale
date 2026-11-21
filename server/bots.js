@@ -9,7 +9,7 @@ import { WEAPONS, CONSUMABLES } from '../shared/weapons.js';
 import { PLAYER, BOT_DIFFICULTY, BOT_VS_BOT, MAP_HALF, PICKUP_RANGE, BUILD } from '../shared/constants.js';
 import { MAP } from './match.js';
 import { buildNav } from './nav.js';
-import { DOME, underDomeRoof } from '../shared/megadome.js';
+import { DOME, underDomeRoof, domeEscape } from '../shared/megadome.js';
 
 export const BOT_NAMES = [
   'BlitzBot', 'Sir Tackles', 'QB Quinn', 'Hut Hut', 'Fumble Fox', 'Endzone Ed', 'Punt Pete', 'Linebacker Lou',
@@ -196,7 +196,12 @@ function waypoint(match, b, ai, t) {
   // on a roof or other spot the grid can't see (but not on a build floor we can stand on)?
   const elevated = b.y > N.floorAt(b.x, b.z) + 1.5 && N.roofed(b.x, b.z);
   let wx, wz;
-  if (elevated) {
+  const esc = elevated && domeEscape(b.x, b.y, b.z); // up in the Mega Dome: its own way down
+  if (esc) {
+    wx = esc.x; wz = esc.z;
+    if (esc.jump) ai.wantJump = true;
+    ai.path = null;
+  } else if (elevated) {
     if (!ai.roofExit || t > ai.roofExit.t) { const o = N.offRoof(b.x, b.z); ai.roofExit = o ? { x: o[0], z: o[1], t: t + 4 } : { x: g.x, z: g.z, t: t + 4 }; }
     wx = ai.roofExit.x; wz = ai.roofExit.z;
     ai.path = null;
@@ -524,7 +529,11 @@ function think(match, b, ai, D, t) {
         if (match.loot.has(bestL.id)) ai.skip.set(bestL.id, t + 30); // couldn't take it
         else if (match.nextId > before) ai.skip.set(match.nextId - 1, t + 120); // what we swapped out
       }
-    }
+    } else if (Math.hypot(bestL.x - b.x, bestL.z - b.z) < 1.5 && Math.abs(bestL.y - b.y) >= 2.3) {
+      // right above/below it on a ledge (stadium rows, a floor up): the grid thinks we're there
+      if (!ai.ledgeSince) ai.ledgeSince = t;
+      else if (t - ai.ledgeSince > 3) { ai.skip.set(bestL.id, t + 30); ai.ledgeSince = 0; }
+    } else ai.ledgeSince = 0;
     return;
   }
 

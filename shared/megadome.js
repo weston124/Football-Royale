@@ -94,8 +94,9 @@ export function buildMegaDome({ box: mapBox, decor, loot, chests, pois, elevator
   };
 
   pois.push({ name: 'Mega Dome', x: 0, z: 0, r: 100 });
-  decor.push({ type: 'pavement', x: 0, z: 0, w: 262, d: 196 });
-  decor.push({ type: 'floor', x: 0, z: 0, w: HX * 2, d: HZ * 2, color: 0x3f8f3f, y: 0.03 }); // turf apron
+  // plaza and turf apron: on the minimap; drawn by stadium.js (depth-offset, no flicker with the roads)
+  decor.push({ type: 'pavement', x: 0, z: 0, w: 262, d: 196, dome: true });
+  decor.push({ type: 'floor', x: 0, z: 0, w: HX * 2, d: HZ * 2, color: 0x3f8f3f, y: 0.03, dome: true });
   decor.push({ type: 'field', x: 0, z: 0, w: 110, d: 54 });
   decor.push({ type: 'goalpost', x: -56, z: 0, rot: 0 });
   decor.push({ type: 'goalpost', x: 56, z: 0, rot: 0 });
@@ -158,7 +159,6 @@ export function buildMegaDome({ box: mapBox, decor, loot, chests, pois, elevator
   // ---- floors: L1 (suites + corridor) and L2 (upper concourse) slabs ----
   slab(20.4, D.OUT, L1 - SLAB, L1, C.slab, 'slab', holesL1);
   slab(20.4, D.OUT, L2 - SLAB, L2, C.slab, 'slab', holesL2);
-  for (const side of SIDES) { const [a, b] = run(side, D.OUT, 20.4); flatDecor(side, 20.4, D.OUT, a, b, 0.05, 0x96938c); }
 
   // ---- L0 concourse: pillars and snack stands ----
   const pill = (side, o, a, y0, y1) => sideBox(side, o - 0.6, o + 0.6, a - 0.6, a + 0.6, y0, y1, 0x2a55b0, 'pillar');
@@ -290,4 +290,40 @@ export function buildMegaDome({ box: mapBox, decor, loot, chests, pois, elevator
     { x: -2, y: L1, z: HZ + 24.6 },                                     // a suite (L1)
     { x: 4, y: L2, z: -(HZ + 33) },                                     // upper concourse (L2)
   );
+}
+
+// Bots only path-find on the ground (server/nav.js). A bot that ends up on an upper level
+// of the dome (landed on the roof or the video board, pushed up the stairs...) gets a
+// waypoint toward the way down from here: { x, z, jump } or null when not up in the dome.
+//  roof -> into the opening; board -> off its edge; upper deck / trenches -> over the front
+//  rail; upper concourse -> the nearest trench; suite -> its door; suite level -> a corner
+//  lounge, then the lower deck's cross-aisle (on the bots' grid again).
+export function domeEscape(x, y, z) {
+  const { HX, HZ, L1, L2, BOARD: B, OPEN } = D;
+  if (Math.abs(x) > DOME_FOOT.x || Math.abs(z) > DOME_FOOT.z) return null;
+  const sx = x < 0 ? -1 : 1, sz = z < 0 ? -1 : 1;
+  const ox = Math.abs(x) - HX, oz = Math.abs(z) - HZ, o = Math.max(ox, oz);
+  const endSide = ox > oz; // nearer the E/W ends than the long sides
+  if (y >= B.y0 && Math.abs(x) < B.x + 1 && Math.abs(z) < B.z + 1) return { x, z: sz * (B.z + 4) };
+  if (y > 21) return { x: Math.max(-OPEN.x + 6, Math.min(OPEN.x - 6, x)), z: Math.max(-OPEN.z + 6, Math.min(OPEN.z - 6, z)) };
+  if (o < 20.3 || y < L1 - 0.3) return null;
+  const inward = (to) => (endSide ? { x: sx * (HX + to), z } : { x, z: sz * (HZ + to) });
+  if (y > L2 + 0.3) return { ...inward(18.5), jump: o < 21.6 };          // upper deck rows: over the rail
+  if (y > L2 - 0.3) {
+    if (o < 27.6) return { ...inward(18.5), jump: o < 21.6 };            // in a trench
+    const along = endSide ? z : x;
+    const t = endSide ? 0 : [-40, 0, 40].reduce((p, q) => (Math.abs(q - along) < Math.abs(p - along) ? q : p));
+    if (Math.abs(along - t) > 1.2) return endSide ? { x: sx * (HX + 29.5), z: t } : { x: t, z: sz * (HZ + 29.5) };
+    return inward(18.5);
+  }
+  if (y > L1 + 0.3) return endSide ? { x: sx * (HX + 29.5), z } : { x: sx * 68.5, z };  // on the L1 -> L2 stairs: go down
+  // suite level
+  const lim = endSide ? D.SUITES_Z : D.SUITES_X, a = endSide ? z : x;
+  if (o > 20.5 && o < 26.7 && Math.abs(a) < lim) {                       // inside a suite: out of its door
+    const c = (Math.floor((a + lim) / D.SUITE_W) + 0.5) * D.SUITE_W - lim;
+    return endSide ? { x: sx * (HX + 28), z: c } : { x: c, z: sz * (HZ + 28) };
+  }
+  const lounge = endSide ? 49 : 78.5; // between the last suite and the corner
+  if (Math.abs(a) < lounge - 1 || o > 35) return endSide ? { x: sx * (HX + 34.5), z: (z < 0 ? -1 : 1) * lounge } : { x: sx * lounge, z: sz * (HZ + 34.5) };
+  return endSide ? { x: sx * (HX + 19.6), z: (z < 0 ? -1 : 1) * lounge } : { x: sx * lounge, z: sz * (HZ + 19.6) };
 }

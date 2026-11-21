@@ -171,6 +171,14 @@ export function buildStadium(scene, map, detailOn = true) {
   }
   scene.add(new THREE.Mesh(merge(clad), new THREE.MeshBasicMaterial({ map: cladTex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })));
 
+  // ---- plaza around the dome and the turf apron round the field (depth-offset over the roads) ----
+  for (const d of map.decor) {
+    if (!d.dome) continue;
+    const g = new THREE.PlaneGeometry(d.w, d.d); g.rotateX(-Math.PI / 2); g.translate(d.x, d.type === 'pavement' ? 0.01 : 0.03, d.z);
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: d.type === 'pavement' ? 0xa9a9a2 : d.color, polygonOffset: true, polygonOffsetFactor: d.type === 'pavement' ? -1 : -1.5, polygonOffsetUnits: d.type === 'pavement' ? -4 : -6 }));
+    scene.add(m);
+  }
+
   // ---- concourse floor (L0): polished tiles with a royal-blue walkway ----
   const floorTex = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#c9c2b3'; g.fillRect(0, 0, w, h);
@@ -322,9 +330,9 @@ export function buildStadium(scene, map, detailOn = true) {
       const g = new THREE.PlaneGeometry(1, 1, 1, 12);
       const pos = g.attributes.position;
       for (let i = 0; i < pos.count; i++) {
-        const u = pos.getX(i), v = pos.getY(i); // -0.5..0.5
-        const z = v * 34, x = sx * 74 + u * 44 * sx;
-        pos.setXYZ(i, x, roofY(Math.abs(z)) + 0.08, sx > 0 ? -z : z);
+        const u = pos.getX(i), v = pos.getY(i); // -0.5..0.5 (both read the same way from the south)
+        const z = -v * 34, x = sx * 74 + u * 44;
+        pos.setXYZ(i, x, roofY(Math.abs(z)) + 0.08, z);
       }
       g.computeVertexNormals();
       const mesh = new THREE.Mesh(g, m); mesh.renderOrder = 1;
@@ -524,8 +532,8 @@ export function buildStadium(scene, map, detailOn = true) {
   const signTex = canvasTex(1024, 256, (g, w, h) => {
     g.fillStyle = '#0d1f55'; g.fillRect(0, 0, w, h);
     g.strokeStyle = '#ffcc33'; g.lineWidth = 12; g.strokeRect(6, 6, w - 12, h - 12);
-    drawCrown(g, 120, h / 2, 70); drawCrown(g, w - 120, h / 2, 70);
-    g.font = 'bold italic 140px Impact, Arial Black'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    drawCrown(g, 110, h / 2, 62); drawCrown(g, w - 110, h / 2, 62);
+    g.font = 'bold italic 118px Impact, Arial Black'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillStyle = '#ffcc33'; g.fillText('MEGA DOME', w / 2, h / 2 + 8);
   });
   const signMat = new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false });
@@ -535,6 +543,27 @@ export function buildStadium(scene, map, detailOn = true) {
     p.position.set(d.x, d.y, d.z);
     p.rotation.y = { S: 0, N: Math.PI, E: Math.PI / 2, W: -Math.PI / 2 }[d.side];
     scene.add(p);
+  }
+  // giant facade signs on the long sides and crowns on the end glass (seen from far away)
+  for (const sz of [-1, 1]) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(56, 14), signMat);
+    p.position.set(0, 16.5, sz * (HZ + DOME.OUT + 0.6));
+    if (sz < 0) p.rotation.y = Math.PI;
+    scene.add(p);
+  }
+  const crownTex = canvasTex(512, 512, (g, w, h) => { g.clearRect(0, 0, w, h); drawCrown(g, w / 2, h / 2 + 30, 190); });
+  const crownMat = new THREE.MeshBasicMaterial({ map: crownTex, transparent: true, toneMapped: false, depthWrite: false, side: THREE.DoubleSide });
+  for (const sx of [-1, 1]) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), crownMat);
+    p.position.set(sx * (HX + DOME.OUT + 0.6), 32, 0);
+    p.rotation.y = sx * Math.PI / 2;
+    scene.add(p);
+  }
+  // blue LED band along the roof edge of the long sides
+  {
+    const led = [];
+    for (const sz of [-1, 1]) led.push(boxGeo(-(HX + DOME.OUT + 0.6), roofY(DOME.EDGE_Z) - 1.0, sz * DOME.EDGE_Z - 0.15, HX + DOME.OUT + 0.6, roofY(DOME.EDGE_Z) - 0.3, sz * DOME.EDGE_Z + 0.15));
+    scene.add(new THREE.Mesh(merge(led), new THREE.MeshBasicMaterial({ color: 0x4f8dff, toneMapped: false })));
   }
   const arrowTex = canvasTex(256, 128, (g, w, h) => {
     g.fillStyle = '#111827'; g.fillRect(0, 0, w, h);

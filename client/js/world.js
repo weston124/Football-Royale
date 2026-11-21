@@ -81,9 +81,11 @@ export function buildWorld(scene, map) {
     if (material.map) scene.add(m); else props.add(m);
     return m;
   };
-  const fieldBig = new THREE.MeshLambertMaterial({ map: fieldTexture(false) });
-  const fieldSmall = new THREE.MeshLambertMaterial({ map: fieldTexture(true) });
+  // (depth offset: fields win over the roads under them even from the blimp)
+  const fieldBig = new THREE.MeshLambertMaterial({ map: fieldTexture(false), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+  const fieldSmall = new THREE.MeshLambertMaterial({ map: fieldTexture(true), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
   for (const d of map.decor) {
+    if (d.dome) continue; // the Mega Dome's plaza/apron are drawn by stadium.js
     switch (d.type) {
       case 'field': flat(d.x, d.z, d.w, d.d, d.small ? fieldSmall : fieldBig, 0.04); break;
       case 'road': flat(d.x, d.z, d.w, d.d, mat('#4a4d52'), 0.02); break;

@@ -259,3 +259,43 @@ test('bots skydiving to the Mega Dome aim for the open roof', () => {
   setClock(null);
   void DROP;
 });
+
+test('bots that end up on an upper level of the dome find their way back down', { timeout: 60000 }, () => {
+  let T = 9000;
+  setClock(() => T);
+  const m = new Match({ code: 'UP', mode: 'nobuild' }); clearInterval(m.timer);
+  const h = m.addHuman({ readyState: 1, send() {} }, 'H'); m.start();
+  const bots = [...m.players.values()].filter((p) => p.bot);
+  // everyone else far away and harmless
+  for (const p of m.players.values()) Object.assign(p, { phase: 'ground', x: -480, y: 0, z: -480, onGround: true });
+  Object.assign(h, { x: 480, z: 480 });
+  const N = nav();
+  const { HX, HZ, L1, L2 } = DOME;
+  const spots = [
+    ['roof', 70, roofY(30), 30], ['board', 10, DOME.BOARD.y1, 2], ['upper deck', 20, L2 + 0.65 * 9, HZ + 32.3],
+    ['upper deck end', -(HX + 33), L2 + 0.65 * 10, 8], ['L2 south', 60, L2, HZ + 33], ['L2 east', HX + 33, L2, 20],
+    ['L2 corner', -(HX + 34), L2, -(HZ + 34)], ['trench', 40, L2, HZ + 24], ['L1 south', -30, L1, HZ + 30],
+    ['L1 east', HX + 31, L1, -10], ['L1 corner', -(HX + 33), L1, -(HZ + 33)], ['suite', -2, L1, HZ + 24.6],
+    ['suite end', HX + 24, L1, 20], ['stairs B', 72.8, L1 + 2.3, HZ + 35.5],
+  ];
+  spots.forEach(([name, x, y, z], i) => {
+    const b = bots[i];
+    Object.assign(b, { x, y, z, vx: 0, vy: 0, vz: 0, onGround: true, phase: 'ground', pad: 100, inv: [{ w: 'smg', r: 0, ammo: 30 }, null, null, null, null], slot: 1 });
+    b.ai.goal = null; b.ai.path = null;
+    b._spot = name;
+  });
+  const active = bots.slice(0, spots.length);
+  for (const b of bots.slice(spots.length)) m.players.delete(b.id);
+  const down = new Map();
+  for (let i = 0; i < 20 * 45 && down.size < active.length; i++) {
+    T += 0.05;
+    m.simulate(T); // moves the bots (updateBot) and finishes their heals/reloads
+    for (const b of active) {
+      if (down.has(b)) continue;
+      if (b.onGround && Math.abs(b.y - N.floorAt(b.x, b.z)) < 0.5) down.set(b, i / 20);
+    }
+  }
+  const results = active.map((b) => `${b._spot}: ${down.has(b) ? down.get(b).toFixed(1) + ' s' : `STILL UP at ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)}`}`);
+  assert.equal(down.size, active.length, results.join('\n'));
+  m.close(); setClock(null);
+});

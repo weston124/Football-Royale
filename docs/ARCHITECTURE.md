@@ -23,7 +23,9 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 |---|---|
 | `shared/constants.js` | Tick rate, map size, player physics, storm phases, build/bot settings |
 | `shared/physics.js` | `World` spatial hash of AABB boxes, `stepPlayer`, `stepFalling`, `raycastWorld`, `rayPlayer`, `pieceBox` (build pieces) |
-| `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs, vehicle spots) |
+| `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs, vehicle spots, elevators) |
+| `shared/megadome.js` | ⭐ The Mega Dome stadium in the middle of the map (`DOME` layout numbers, `roofY`, `underDomeRoof`, `buildMegaDome`) |
+| `shared/elevators.js` | ⭐ Elevators: cab height = f(server clock), collision boxes (cab column + doors), shaft walls |
 | `shared/vehicles.js` | Vehicle types (Tailgate Truck, Sideline Cart), spawn list per match kind, arcade car physics `stepVehicle`, collision footprint |
 | `shared/weapons.js` | Weapons (5 rarities), consumables, damage |
 | `shared/skins.js` | Outfit presets, Longhorn Item Shop (`SHOP`), Daily Shop pool (`DAILY_POOL`), emotes, Ball Bucks rewards, `sanitizeSkin` |
@@ -46,12 +48,14 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `client/js/quality.js` | Graphics presets Low/Medium/High/Auto + dynamic resolution (see below) |
 | `shared/netcodec.js` | Snapshot player encoding (delta + quantization) and interest-management bands, used by server, client and tests |
 | `client/js/world.js` | Builds the 3D city from the map; minimap image |
+| `client/js/stadium.js` | Draws the Mega Dome: glass, vault roof, arches, video board, ribbon boards, seat backs, concourse dressing, instanced elevator cabs/doors |
 | `client/js/menuScene.js` | Animated stadium home-screen background |
 | `client/js/vehicles.js` | Vehicle models, interpolation of everyone's vehicles, driving my own vehicle, chase camera |
 | `client/js/hud.js`, `client/js/audio.js` | HUD helpers; Web Audio procedural sounds + party music |
 | `client/admin.html` | Admin web panel |
 | `tools/build_human.py` | Converts MakeHuman CC0 data into `client/assets/human*.{json,bin}` |
 | `tools/netmeter.js`, `tools/serverbench.js` | KB/s per client (headless ws client); server CPU per tick with N full matches |
+| `tools/domeshot.js`, `tools/domeplay.js` | Playwright: Mega Dome screenshots from fixed views (no match); a real Party Island session riding an elevator |
 | `tools/rendermeter.js`, `tools/lodstats.js`, `tools/lodshot.js` | Playwright: draw calls/triangles/GPU memory (incl. a 74-player crowd and spawn/despawn leak check), triangles per LOD, LOD screenshot |
 
 ## Network protocol (JSON over `/ws`)
@@ -89,6 +93,53 @@ first snapshot has all of them, parked vehicles cost nothing. Clients interpolat
   per target; Party Island: a bump, no damage. Bullets/tackles/explosions damage vehicles (truck 450, cart 260 hp);
   at 0 hp it breaks down (`ev ['vb', id]`, smoke, can't be driven). Drivers sit up high: their head/chest can
   be shot over the vehicle box, and they take storm and explosion damage normally.
+
+## The Mega Dome (shared/megadome.js, client/js/stadium.js)
+A giant domed stadium (~200 x 142 m, |x| < 100, |z| < 71; arch feet at x = ±125) around the center field.
+Everything is a rectangular "ring" around the podium rectangle |x| = 62, |z| = 33 (`o` = offset out from it):
+| o | y | what |
+|---|---|---|
+| < 0 | 0 | field + turf apron |
+| 0-19.2 | 0.6 m steps to 7.2 | lower deck (ground-standing, so bots can walk it); vomitory tunnels at x = ±30 and z = 0 |
+| 20.4-37.2 | 0 (L0) | ground concourse: 5 gates in the outer wall, snack stands, pillars |
+| 20.6-26.6 | 7.2 (L1) | ring of 60 glass-front suites (couch, bar, drink rail), door in the back wall |
+| 26.9-37.2 | 7.2 (L1) | suite corridor; corner lounges open onto the lower deck's cross-aisle |
+| 20.4-37.2 | 0.65 m steps from 11.2 | upper deck; rows 0-4 solid, rows 5+ raised over the L2 concourse; trenches at x = 0, ±40, z = 0 |
+| 27.4-37.2 | 11.2 (L2) | upper concourse under the upper deck |
+Stairs (12 x 0.6 m, then 7 x 0.57 m) along the outer wall near each corner link L0 -> L1 -> L2; an elevator in
+each corner serves all three. Floors L1/L2 are 0.4 m `slab` boxes with holes for stairwells and shafts.
+The roof is a barrel vault of `ramp` boxes (walkable, `roofY(z)`) with a 96 x 38 m opening (|x| < 48, |z| < 19)
+over the field for skydivers; the video board (|x| < 24, |z| < 6, y 30-41) is solid. Two giant arches (visual)
+hold the board. Glass (`kind: 'glass'`) is solid for movement and bullets.
+- Parachuting (`stepFalling`) slides along walls instead of popping you on top of them, and lands on the highest
+  surface *below* you, so gliding in under the roof lands you in the bowl, not on the roof.
+- Bots: `server/nav.js` only maps ground-standing boxes (field, lower deck, L0 concourse, outside); decks/slabs/roof
+  are ceilings (`nav.ceil`), and A* never plans a drop into a cell whose ceiling is too low (e.g. off the
+  cross-aisle into the concourse under the suites). Bots dropping on the dome aim for the roof opening
+  (`underDomeRoof`) and skip Equipment Bags up on L1/L2. `test/stadium.test.js` checks that every dome loot spot
+  and bag is reachable on foot (a physics flood fill over all levels via the stairs).
+- Drawing: the stadium's boxes (`b.dome`) are merged into one mesh with baked, neutral face shading (no green
+  tint from the hemisphere light on ceilings), glass is one transparent mesh, the elevators ~6 instanced meshes;
+  ~45-60 draw calls for the whole city with the dome in view. Low quality hides seat backs and arch lacing
+  (`stadiumDetail` preset flag). The board's canvas redraws every 30 frames only when players-left/clock change.
+- Vehicles start outside (south/north roads at z = ±88, east/west at x = ±112).
+
+## Elevators (shared/elevators.js)
+`map.elevators` = `[{x0,x1,z0,z1, stops:[0, 7.2, 11.2], door: side, phase}]`. `elevatorHeight(e, t)` is a pure
+function of the **server clock** `t`: rest 4 s at each stop, glide (cosine eased, ~2.2 m/s average, 3.5 m/s peak)
+up through every stop and back down (period ~26 s; each elevator has its own `phase`).
+- Collision: `World.elevators` + `World.time`. The server sets `world.time = now()` every tick (bots), the client
+  sets it to `serverNow()` every frame before stepping the local player, so prediction and server agree.
+  `world.movers()` returns the boxes at that time: the cab is a solid **column** from below ground to the cab floor
+  (`lift: true`), so nobody can ever be under it; it only carries players whose centre is over it, and anyone whose
+  centre is inside it below the floor is pushed up on top (never trapped). Each stop has a **door** box in the
+  doorway, closed whenever the cab isn't resting there, so nobody walks into an empty shaft. Doors/cabs closing on
+  someone never trap them (`stepPlayer` ignores boxes you already overlap). Riders stick to a descending cab even
+  at low frame rates.
+- The server accepts the vertical motion like stairs (`onInput` allows climbs up to 14 m/s). Bots don't use
+  elevators (shafts are blocked in the nav grid).
+- Drawing: cab floor/roof/glass/posts, a hydraulic ram and sliding doors (instanced, moved every frame from the same
+  clock), "▲▼" signs over every doorway.
 
 ## Item shops and Ball Bucks
 Two shops, one screen (`#shop`, tabs; the Daily Shop is the default tab). Prices: every item costs 1,000+ Ball Bucks.
