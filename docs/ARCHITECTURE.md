@@ -53,7 +53,7 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `client/admin.html` | Admin web panel |
 | `tools/build_human.py` | Converts MakeHuman CC0 data into `client/assets/human*.{json,bin}` |
 | `tools/netmeter.js`, `tools/serverbench.js` | KB/s per client (headless ws client); server CPU per tick with N full matches |
-| `tools/mapcheck.js`, `tools/navdump.js`, `tools/cityshots.js` | Map report (box/vehicle/loot counts, blocked vehicle spots, loot in walls, unreachable bags); bots' nav grid around a spot; Playwright screenshots + draw calls from fixed camera spots (`PORT=4802 node tools/cityshots.js outDir [name..]`) |
+| `tools/mapcheck.js`, `tools/navdump.js`, `tools/cityshots.js`, `tools/drivesmoke.js` | Map report (box/vehicle/loot counts, blocked vehicle spots, loot in walls, unreachable bags); bots' nav grid around a spot; Playwright screenshots + draw calls from fixed camera spots (`PORT=4802 node tools/cityshots.js outDir [name..]`); browser smoke test driving a Hatchback (LOD bands, page errors) |
 | `tools/rendermeter.js`, `tools/lodstats.js`, `tools/lodshot.js` | Playwright: draw calls/triangles/GPU memory (incl. a 74-player crowd and spawn/despawn leak check), triangles per LOD, LOD screenshot |
 
 ## Network protocol (JSON over `/ws`)

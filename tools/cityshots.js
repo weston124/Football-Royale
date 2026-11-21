@@ -27,6 +27,7 @@ export const SHOTS = {
   garage: [[330, 18, -415], [290, 2, -462]],
   flats: [[-300, 30, 140], [-300, 0, 92]],
   lotclose: [[-130, 2.2, 176], [-100, 0.8, 186]],
+  hatch: [[-221.5, 2.2, -177.5], [-226, 0.6, -183]],
 };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
