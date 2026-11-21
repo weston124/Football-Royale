@@ -186,32 +186,26 @@ export function buildWorld(scene, map) {
   // windows on towers (simple stripes)
   const winMat = new THREE.MeshLambertMaterial({ color: 0x9fd4ff, emissive: 0x223344 });
   const winGeos = [];
+  // one flat window band (2 triangles) just outside a face of box b; nx/nz: which face
+  const band = (b, nx, nz, y, k) => {
+    const cx = (b.min[0] + b.max[0]) / 2, cz = (b.min[2] + b.max[2]) / 2;
+    const g = new THREE.PlaneGeometry((nx ? b.max[2] - b.min[2] : b.max[0] - b.min[0]) * k, 1.4);
+    g.rotateY(Math.atan2(nx, nz));
+    g.translate(nx ? (nx < 0 ? b.min[0] - 0.04 : b.max[0] + 0.04) : cx, y, nz ? (nz < 0 ? b.min[2] - 0.04 : b.max[2] + 0.04) : cz);
+    winGeos.push(g);
+  };
   for (const b of map.boxes) {
     if (b.kind !== 'tower') continue;
-    const h = b.max[1];
-    for (let y = 3; y < h - 2; y += 4) {
-      for (const side of [0, 1]) {
-        const w = side ? b.max[0] - b.min[0] : b.max[2] - b.min[2];
-        const g = new THREE.BoxGeometry(side ? w * 0.9 : 0.1, 1.4, side ? 0.1 : w * 0.9);
-        const cx = (b.min[0] + b.max[0]) / 2, cz = (b.min[2] + b.max[2]) / 2;
-        g.translate(side ? cx : b.min[0] - 0.05, y, side ? b.min[2] - 0.05 : cz); winGeos.push(g);
-        const g2 = g.clone(); g2.translate(side ? 0 : b.max[0] - b.min[0] + 0.1, 0, side ? b.max[2] - b.min[2] + 0.1 : 0); winGeos.push(g2);
-      }
-    }
+    for (let y = b.min[1] + 3; y < b.max[1] - 2; y += 4) for (const [nx, nz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) band(b, nx, nz, y, 0.9);
   }
-  // windows on the outside walls of multi-story buildings: one band per 4 m floor, on long wall pieces
+  // windows on the walls of multi-story buildings (outside and inside): one band per 4 m floor, on long wall pieces
   for (const b of map.boxes) {
     if (b.kind !== 'facade') continue;
     const alongX = b.max[0] - b.min[0] > b.max[2] - b.min[2], len = alongX ? b.max[0] - b.min[0] : b.max[2] - b.min[2];
     if (len < 2.5) continue;
-    const cx = (b.min[0] + b.max[0]) / 2, cz = (b.min[2] + b.max[2]) / 2;
     for (let y = 2.2; y + 0.7 <= b.max[1] - 0.4; y += 4) {
       if (y - 0.7 < b.min[1]) continue;
-      for (const s of [-1, 1]) {
-        const g = new THREE.BoxGeometry(alongX ? len * 0.84 : 0.08, 1.4, alongX ? 0.08 : len * 0.84);
-        g.translate(alongX ? cx : (s < 0 ? b.min[0] - 0.04 : b.max[0] + 0.04), y, alongX ? (s < 0 ? b.min[2] - 0.04 : b.max[2] + 0.04) : cz);
-        winGeos.push(g);
-      }
+      for (const s of [-1, 1]) band(b, alongX ? 0 : s, alongX ? s : 0, y, 0.84);
     }
   }
   if (winGeos.length) scene.add(new THREE.Mesh(mergeGeometries(winGeos), winMat));

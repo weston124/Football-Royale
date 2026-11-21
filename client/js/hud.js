@@ -116,6 +116,8 @@ export class Hud {
     }
     for (const v of s.vehicles || []) { // drivable vehicles: little rounded cars
       if (v.mine) continue;
+      const vx = X(v.x), vz = Z(v.z);
+      if (vx < -10 || vz < -10 || vx > W + 10 || vz > W + 10) continue; // off the minimap
       const len = (v.len || 3) * k * (big ? 1.6 : 1.3) + 4, wid = len * 0.55;
       g.save(); g.translate(X(v.x), Z(v.z)); g.rotate(-v.yaw);
       g.fillStyle = v.broken ? '#777' : '#ffffff'; g.strokeStyle = '#1d2026'; g.lineWidth = 1.5;

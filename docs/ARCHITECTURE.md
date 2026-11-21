@@ -24,7 +24,8 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `shared/constants.js` | Tick rate, map size, player physics, storm phases, build/bot settings |
 | `shared/physics.js` | `World` spatial hash of AABB boxes, `stepPlayer`, `stepFalling`, `raycastWorld`, `rayPlayer`, `pieceBox` (build pieces) |
 | `shared/map.js` | Seeded generator for the Giant Sports City (boxes, decor, trees, loot spots, chests, POIs, vehicle spots) |
-| `shared/vehicles.js` | Vehicle types (Tailgate Truck, Sideline Cart), spawn list per match kind, arcade car physics `stepVehicle`, collision footprint |
+| `shared/districts.js` | The newer districts (Skyline Heights, Gridiron Galleria, Huddle Shops, Fuel Stop, Kickoff Academy, Splash Zone, Signal Hill, farms, neighborhoods, Pit Stop Garage, ring roads) and the building kit: `shell` (one floor), `office` (multi-story with stairs to the roof), `tower`, `groundStairs`, parking rows. Own seeded RNG |
+| `shared/vehicles.js` | Vehicle types (Tailgate Truck, Sideline Cart, Hatchback), spawn list per match kind, arcade car physics `stepVehicle`, collision footprint |
 | `shared/weapons.js` | Weapons (5 rarities), consumables, damage |
 | `shared/skins.js` | Outfit presets, Longhorn Item Shop (`SHOP`), Daily Shop pool (`DAILY_POOL`), emotes, Ball Bucks rewards, `sanitizeSkin` |
 | `shared/shop.js` | ⭐ Daily Item Shop rotation: `dailyShop(dateKey, forced)` (seeded by the UTC date), `utcDateKey`, `nextResetAt` |
@@ -47,11 +48,12 @@ Software rendering is slow (~5 fps); don't judge performance by it. A new browse
 | `shared/netcodec.js` | Snapshot player encoding (delta + quantization) and interest-management bands, used by server, client and tests |
 | `client/js/world.js` | Builds the 3D city from the map; minimap image |
 | `client/js/menuScene.js` | Animated stadium home-screen background |
-| `client/js/vehicles.js` | Vehicle models, interpolation of everyone's vehicles, driving my own vehicle, chase camera |
+| `client/js/vehicles.js` | Vehicle models (3 LODs: full / instanced parked / instanced boxy far), interpolation of everyone's vehicles, driving my own vehicle, chase camera |
 | `client/js/hud.js`, `client/js/audio.js` | HUD helpers; Web Audio procedural sounds + party music |
 | `client/admin.html` | Admin web panel |
 | `tools/build_human.py` | Converts MakeHuman CC0 data into `client/assets/human*.{json,bin}` |
 | `tools/netmeter.js`, `tools/serverbench.js` | KB/s per client (headless ws client); server CPU per tick with N full matches |
+| `tools/mapcheck.js`, `tools/navdump.js`, `tools/cityshots.js` | Map report (box/vehicle/loot counts, blocked vehicle spots, loot in walls, unreachable bags); bots' nav grid around a spot; Playwright screenshots + draw calls from fixed camera spots (`PORT=4802 node tools/cityshots.js outDir [name..]`) |
 | `tools/rendermeter.js`, `tools/lodstats.js`, `tools/lodshot.js` | Playwright: draw calls/triangles/GPU memory (incl. a 74-player crowd and spawn/despawn leak check), triangles per LOD, LOD screenshot |
 
 ## Network protocol (JSON over `/ws`)
@@ -74,12 +76,19 @@ automatically (the server hashes them), inline styles are fine.
   server's lag compensation rewinds that player by the same amount (`Match.netDelay`).
 - `sh` (shots) and `sw` (tackle swings) events only go to players within 320 m / 160 m.
 
-**Vehicles (`s.vh`, `server/vehicles.js`, `shared/vehicles.js`).** ~17 vehicles at fixed spots in the city
-(`map.vehicles`, ids = index + 1, the same everywhere), 2 carts on Party Island. Each is in the collision `World`
-as two square boxes (`kind:'vehicle'`, `vid`), so players, bots, bullets and other vehicles bump into it; the nav
-grid blocks the parked spots. Entry `[id, x, y, z, yaw, speed, driverId, hp%, broken]`, sent to a client only
-when it changed since the last entry that client got (every tick within 160 m, every 4th tick farther); the
-first snapshot has all of them, parked vehicles cost nothing. Clients interpolate them like players.
+**Vehicles (`s.vh`, `server/vehicles.js`, `shared/vehicles.js`).** Every car in the city is drivable: ~167
+vehicles at fixed spots (`map.vehicles`, ids = index + 1, the same everywhere: parking lots, street parking,
+driveways, the Fuel Stop, garages, farms); there are no static car boxes. 2 carts on Party Island. Each is in the
+collision `World` as two square boxes (`kind:'vehicle'`, `vid`), so players, bots, bullets and other vehicles bump
+into it; the nav grid blocks the parked spots. `generateMap` drops any spot that isn't clear (a tree or random
+house on it). Entry `[id, x, y, z, yaw, speed, driverId, hp%, broken]`, encoded only after the vehicle changed
+(`v._net` is cleared by `place()`, driving, entering/leaving and damage) and sent to a client only when it changed
+since the last entry that client got (every tick within 160 m, every 4th tick farther); the first snapshot has all
+of them, parked vehicles cost nothing. Clients interpolate them like players.
+- Client LODs: full model (turning wheels, seated driver) within 16 m of the camera, when driven or for 2 s after
+  it moved; otherwise one `InstancedMesh` per model+color (baked body + wheels) up to 90 m, and beyond that one
+  `InstancedMesh` per model made of a few boxes tinted with `instanceColor`. Only shown vehicles are packed into
+  an instanced mesh's first `count` slots (`flush()`), so ~170 parked vehicles cost ~20 draw calls.
 - Driving: `veh{id}` within 3 m of a free, working vehicle → personal event `pe ['veh', id, x, y, z, yaw]`
   (`['veh', 0]` + `corr` when you get out, die, quit or it breaks down; you're placed beside it). The driver's
   client runs `stepVehicle` and sends `in{x,y,z,yaw,pitch,vy,vs}` (`vy` vehicle yaw, `vs` speed); the server
@@ -89,6 +98,22 @@ first snapshot has all of them, parked vehicles cost nothing. Clients interpolat
   per target; Party Island: a bump, no damage. Bullets/tackles/explosions damage vehicles (truck 450, cart 260 hp);
   at 0 hp it breaks down (`ev ['vb', id]`, smoke, can't be driven). Drivers sit up high: their head/chest can
   be shot over the vehicle box, and they take storm and explosion damage normally.
+
+## The city (shared/map.js + shared/districts.js)
+~2,560 boxes (~2,160 drawn as one merged mesh; tree trunks are drawn as instanced trees), 26 named places. Building rules:
+- Steps are 0.5 m (`PLAYER.stepUp` 0.7). Multi-story `office()` buildings: 4 m floors, 8 steps x 0.7 m in a
+  switchback stairwell along one wall, a hole in each slab over its flight, a wall beside each flight up to the
+  slab (the step-up doesn't check head room, so without it you could step up with your head in the slab), roof
+  parapet 0.6 m (you and bots can step over it). Kind `facade` walls get a window band per floor in world.js.
+- Bots' nav grid only knows one floor per cell (ground-standing boxes): upper floors and roofs are for players;
+  bots skip loot they can't path to. Ground-standing stairs to a solid platform (`groundStairs`, 1 m deep steps so
+  the 1 m grid sees 0.5 m rises) work for bots too (slide towers, TV tower base). Equipment Bags only on ground
+  floors or such platforms (`test/bots.test.js` checks every bag is reachable).
+- Loot spots of the districts are nudged out of walls/steps/partitions; `test/map.test.js` checks loot, stairs
+  (walks up Huddle HQ to the roof), head room beside flights, determinism and the POI list.
+- Decor types for the new places: `tint` (colored flat: pools, crops, track, upper floors), `sign` (name board,
+  canvas texture), `slide` (water slide tube).
+- Leave the Mega Dome area (|x| < 135, |z| < 105) to the stadium code; districts only reserve land outside it.
 
 ## Item shops and Ball Bucks
 Two shops, one screen (`#shop`, tabs; the Daily Shop is the default tab). Prices: every item costs 1,000+ Ball Bucks.
@@ -144,7 +169,8 @@ for squads). `tools/wsplay.js` plays a real match over WebSockets; `tools/bench.
 Rifle 27×5 (135, 200 m), Shotgun 9 × 9 pellets, 1 shot/s (81 point-blank, falls off past 8 m), Sniper 82 (head ×2;
 only a Legendary body shot one-shots 100 hp), Pigskin Cannon 70 splash, Whistle Grenade 70 splash.
 Floor loot weights: pistol 3.2, smg 3, shotgun 3, rifle 2.6, sniper 1, pigskin 0.8. Rarity floor 42/30/17/8/3 %,
-bags 10/30/32/20/8 %. ~245 floor spots + 34 bags for 75 players. Kills by weapon (Normal, 6 matches, 444 kills): SMG 33%,
+bags 10/30/32/20/8 %. ~470 floor spots + 57 bags for 75 players (the city doubled in buildings; ~60 random
+"wild" spots). Kills by weapon (Normal, 6 matches, 444 kills): SMG 33%,
 rifle 28%, shotgun 26%, pistol 6%, explosives/tackle/sniper 7% — no single gun dominates (median fight 13 m).
 
 **Bots** (`BOT_DIFFICULTY`, `BOT_VS_BOT` in `shared/constants.js`): difficulty only changes how bots treat

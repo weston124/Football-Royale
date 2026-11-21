@@ -115,6 +115,22 @@ function parkedGeo(type, color) {
   }
   return parkedCache.get(key);
 }
+// Far away: a handful of boxes, white body tinted per instance (instanceColor), dark wheels.
+const LOW = {
+  truck: [[2.0, 0.6, 4.7, 0, 0.78, 0], [1.9, 0.68, 1.6, 0, 1.38, -0.25], [1.7, 0.36, 1.8, 0, 1.22, 1.45, '#9a9a9a']],
+  cart: [[1.5, 0.4, 2.8, 0, 0.5, 0], [1.56, 0.1, 1.8, 0, 2.02, -0.08], [1.3, 0.6, 0.2, 0, 1.1, 0.5, '#3a3a3a'], [0.1, 1.3, 0.1, -0.68, 1.35, -0.8, '#cccccc'], [0.1, 1.3, 0.1, 0.68, 1.35, -0.8, '#cccccc']],
+  hatch: [[1.86, 0.6, 3.96, 0, 0.66, 0], [1.72, 0.62, 2.3, 0, 1.27, 0.35], [1.76, 0.38, 1.9, 0, 1.3, 0.35, '#3a4a5a']],
+};
+const lowCache = new Map();
+function lowGeo(type) {
+  if (!lowCache.has(type)) {
+    const g = new THREE.Group(), W = WHEELS[type];
+    for (const [w, h, d, x, y, z, c] of LOW[type]) g.add(box(w, h, d, c || '#ffffff', x, y, z));
+    for (const [x, z] of W.pos) g.add(box(W.w, W.r * 2, W.r * 2, '#222222', x, W.r, z));
+    lowCache.set(type, bakeGroup(g));
+  }
+  return lowCache.get(type);
+}
 export function createVehicleMesh(type, color) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(bodyGeo(type, color), propMaterial));
@@ -133,8 +149,9 @@ export function createVehicleMesh(type, color) {
 
 // ---------- smoke from damaged / broken-down vehicles ----------
 const PUFF_GEO = new THREE.SphereGeometry(0.35, 8, 6);
-const DETAIL = 16; // m: closer than this a parked vehicle gets its full model (see-through cart windshield)
+const DETAIL = 16, FAR = 90; // m: full model closer than DETAIL (see-through cart windshield), boxy model beyond FAR
 const _m4 = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _e = new THREE.Euler();
+const _col = new THREE.Color();
 
 export class Vehicles {
   constructor(game) {
@@ -147,9 +164,10 @@ export class Vehicles {
     this.reset(game.kind);
   }
 
-  // Every vehicle has a slot in an InstancedMesh per model+color (one draw call each, used while
-  // it's parked or far away) and gets its full model (turning wheels, driver) only when it's
-  // close to the camera, moving or driven.
+  // Three levels of detail, so 150+ parked vehicles cost ~20 draw calls:
+  //  0 full model (turning wheels, seated driver): close to the camera, driven or just moved
+  //  1 parked model, one InstancedMesh per model+color (up to FAR m)
+  //  2 a few tinted boxes, one InstancedMesh per model (instanceColor = paint), beyond FAR
   reset(kind) {
     this.kind = kind;
     for (const v of this.list.values()) this.removeBoxes(v);
@@ -160,40 +178,58 @@ export class Vehicles {
     this.inst = new Map();
     const spawns = vehicleSpawns(this.g.map, kind);
     const count = new Map();
-    for (const s of spawns) { const k = s.type + ':' + (s.color % VEHICLE_TYPES[s.type].colors.length); count.set(k, (count.get(k) || 0) + 1); }
+    const add = (k, n) => count.set(k, (count.get(k) || 0) + n);
+    for (const s of spawns) { add(s.type + ':' + (s.color % VEHICLE_TYPES[s.type].colors.length), 1); add(s.type, 1); }
     for (const [k, n] of count) {
       const [type, ci] = k.split(':');
-      const im = new THREE.InstancedMesh(parkedGeo(type, VEHICLE_TYPES[type].colors[ci]), propMaterial, n);
-      im.frustumCulled = false; // instances are all over the map; ~12 meshes, cheap to always submit
-      im.count = 0;
+      const im = new THREE.InstancedMesh(ci === undefined ? lowGeo(type) : parkedGeo(type, VEHICLE_TYPES[type].colors[ci]), propMaterial, n);
+      im.frustumCulled = false; // instances are all over the map; ~20 meshes, cheap to always submit
+      if (ci === undefined) im.setColorAt(0, _col.set('#ffffff')); // (compile the per-instance paint variant once)
+      im.count = 0; im.visible = false;
+      im.userData.members = new Set(); // vehicles drawn by it; packed into the first `count` slots
       this.inst.set(k, im);
       this.group.add(im);
     }
+    this.dirty = new Set();
     for (const s of spawns) {
-      const T = VEHICLE_TYPES[s.type], ci = s.color % T.colors.length, im = this.inst.get(s.type + ':' + ci);
-      const v = { id: s.id, type: s.type, color: T.colors[ci], x: s.x, y: 0, z: s.z, yaw: s.yaw, speed: 0, driver: 0, hp: 100, broken: 0, buf: [], boxes: [], mesh: null, im, ii: im.count++, shown: null, roll: 0, steer: 0, smokeT: 0, movedAt: -1e9 };
+      const T = VEHICLE_TYPES[s.type], ci = s.color % T.colors.length;
+      const v = {
+        id: s.id, type: s.type, color: T.colors[ci], x: s.x, y: 0, z: s.z, yaw: s.yaw, speed: 0, driver: 0, hp: 100, broken: 0, buf: [], boxes: [],
+        mesh: null, slots: [null, this.inst.get(s.type + ':' + ci), this.inst.get(s.type)], band: -1, shown: null, roll: 0, steer: 0, smokeT: 0, movedAt: -1e9,
+      };
       this.list.set(v.id, v);
       this.placeBoxes(v);
-      this.showInstance(v, true);
     }
   }
 
-  // parked look (instance) on/off; `on` also refreshes its position
-  showInstance(v, on) {
-    if (on) {
-      _m4.compose(_p.set(v.x, v.y, v.z), _q.setFromEuler(_e.set(0, v.yaw, v.broken ? 0.06 : 0)), _s.set(1, 1, 1));
+  // Draw v at level `band` (see reset); instanced meshes it left or joined are re-packed in flush().
+  setBand(v, band) {
+    if (band === v.band && (band === 0 || (v.shown && v.shown.x === v.x && v.shown.z === v.z && v.shown.yaw === v.yaw && v.shown.y === v.y && v.shown.broken === v.broken))) return;
+    if (v.band > 0) { const m = v.slots[v.band]; m.userData.members.delete(v); this.dirty.add(m); }
+    if (band > 0) {
+      const m = v.slots[band]; m.userData.members.add(v); this.dirty.add(m);
       v.shown = { x: v.x, y: v.y, z: v.z, yaw: v.yaw, broken: v.broken };
-    } else {
-      _m4.makeScale(0, 0, 0);
-      v.shown = null;
-    }
-    v.im.setMatrixAt(v.ii, _m4);
-    v.im.instanceMatrix.needsUpdate = true;
+    } else v.shown = null;
+    if (band === 0 && !v.mesh) { v.mesh = createVehicleMesh(v.type, v.color); v.roll = 0; }
+    if (band === 0 && !v.mesh.parent) this.group.add(v.mesh);
+    if (band !== 0 && v.mesh && v.mesh.parent) this.group.remove(v.mesh);
+    v.band = band;
   }
-  setDetailed(v, on) {
-    if (on && !v.mesh) { v.mesh = createVehicleMesh(v.type, v.color); v.roll = 0; }
-    if (on && !v.mesh.parent) { this.group.add(v.mesh); this.showInstance(v, false); }
-    if (!on && v.mesh && v.mesh.parent) { this.group.remove(v.mesh); this.showInstance(v, true); }
+  // Only the vehicles shown are in an instanced mesh's first `count` slots (hidden ones cost nothing).
+  flush() {
+    for (const m of this.dirty) {
+      let i = 0;
+      for (const v of m.userData.members) {
+        _m4.compose(_p.set(v.x, v.y, v.z), _q.setFromEuler(_e.set(0, v.yaw, v.broken ? 0.06 : 0)), _s.set(1, 1, 1));
+        m.setMatrixAt(i, _m4);
+        if (m.instanceColor) m.setColorAt(i, _col.set(v.color));
+        i++;
+      }
+      m.count = i; m.visible = i > 0;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
+    this.dirty.clear();
   }
 
   // keep the vehicle's collision boxes in my World (I bump into parked and moving vehicles)
@@ -296,13 +332,13 @@ export class Vehicles {
       if (Math.hypot(v.x - v.bx, v.z - v.bz) > 0.05 || Math.abs(v.yaw - v.byaw) > 0.01) { this.placeBoxes(v); v.movedAt = now; }
       const driver = this.driving && this.driving.id === v.id ? this.g.myId : v.driver;
       if (driver) drivers.set(driver, v);
-      // full model when close, driven or just moved; otherwise the instanced parked model
-      const near = Math.abs(v.x - cam.x) < DETAIL && Math.abs(v.z - cam.z) < DETAIL && (v.x - cam.x) ** 2 + (v.z - cam.z) ** 2 < DETAIL * DETAIL;
-      this.setDetailed(v, near || !!driver || now - v.movedAt < 2);
-      if (v.mesh && v.mesh.parent) {
+      // full model when close, driven or just moved; otherwise an instanced parked / far model
+      const d2 = (v.x - cam.x) ** 2 + (v.z - cam.z) ** 2;
+      this.setBand(v, d2 < DETAIL * DETAIL || driver || now - v.movedAt < 2 ? 0 : d2 < FAR * FAR ? 1 : 2);
+      if (v.band === 0) {
         this.pose(v, s, dt);
         this.dressDriver(v, driver);
-      } else if (!v.shown || v.shown.x !== v.x || v.shown.z !== v.z || v.shown.yaw !== v.yaw || v.shown.y !== v.y || v.shown.broken !== v.broken) this.showInstance(v, true);
+      }
       // smoke when badly damaged or broken down
       if ((v.broken || v.hp < 35) && Math.abs(v.x - L.x) < 120 && Math.abs(v.z - L.z) < 120) {
         v.smokeT -= dt;
@@ -311,6 +347,7 @@ export class Vehicles {
     }
     // hide the full player model of anyone driving (they show as the seated driver)
     for (const e of this.g.ents.values()) e.inVehicle = drivers.has(e.id);
+    this.flush();
     this.updatePuffs(dt);
   }
 
