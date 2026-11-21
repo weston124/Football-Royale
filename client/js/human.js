@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeRng } from '/shared/rng.js';
+import { HELMET_DECALS as DECALS } from '/shared/skins.js';
 
 let DATA = null;          // { info, attrs }
 let BONE_INV = null;      // shared bind inverses
@@ -162,8 +163,12 @@ function mats() {
     cloth: std({ vertexColors: true, roughness: 0.66, side: THREE.DoubleSide }),
     gloss: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.32, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.08, side: THREE.DoubleSide }),
     shiny: std({ vertexColors: true, roughness: 0.2 }),
-    visor: std({ color: 0x0b0b0e, roughness: 0.05, metalness: 0.7, transparent: true, opacity: 0.72, side: THREE.DoubleSide }),
+    visor: std({ vertexColors: true, roughness: 0.05, metalness: 0.7, transparent: true, opacity: 0.72, side: THREE.DoubleSide }),
     numbers: numberMaterial(),
+    // Daily Shop details: chrome helmets, glowing trim (unlit), helmet decals from one shared icon atlas
+    chrome: std({ vertexColors: true, roughness: 0.16, metalness: 1 }),
+    glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
+    decal: decalMaterial(),
     crown: std({ map: crownTexture(), transparent: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -4 }),
     towel: std({ map: towelTexture(), roughness: 0.95, side: THREE.DoubleSide }),
     mid: std({ vertexColors: true, roughness: 0.62 }),
@@ -196,6 +201,7 @@ function bodyColor(skin, cmap, reg, x, y) {
   if (reg === SOCK && st.crewSocks) c = y > 0.4 ? cmap.cA : y > 0.27 ? (y > 0.315 && y < 0.34 ? cmap.cA : cmap.cJ) : cmap.cW;   // red band, navy with stripe, white crew socks
   if (reg === SKIN && st.armSleeve && x < -0.25 && y < 1.25 && y > 0.75) c = cmap.cJ;                                          // forearm sleeve
   if (reg === TAPE && st.armSleeve) c = x > 0 ? cmap.cA : cmap.cW;
+  if (reg === GLOVE && st.gloves) c = cmap.glove;
   if (st.referee) {
     if (reg === GLOVE || reg === TAPE) c = cmap[SKIN];
     if (reg === SOCK) c = cmap.black;
@@ -206,12 +212,13 @@ function bodyColor(skin, cmap, reg, x, y) {
 function bodyCmap(skin) {
   const cmap = regionColors(skin);
   cmap.cJ = new THREE.Color(skin.jersey); cmap.cA = new THREE.Color(skin.accent); cmap.cW = new THREE.Color('#f4f4f4'); cmap.black = new THREE.Color('#151515');
+  cmap.glove = new THREE.Color((skin.style && skin.style.gloves) || '#f4f4f4');
   return cmap;
 }
 const IRIS = ['#4a2e1c', '#2f5f8a', '#3f6b3a', '#6b4a2a', '#5a4632'];
 // Color slots used by the baked accessories; palette(skin) gives each slot its color for one player.
 const SLOT_NAMES = ['helmet', 'mask', 'stripe', 'accent', 'white', 'bumper', 'eyeWhite', 'iris', 'pupil', 'shine', 'shoe', 'sole',
-  'shoeStripe', 'metal', 'pads', 'hair', 'hair2', 'teeth', 'dimple', 'brow', 'horns', 'black'];
+  'shoeStripe', 'metal', 'pads', 'hair', 'hair2', 'teeth', 'dimple', 'brow', 'horns', 'black', 'visor', 'glow', 'back', 'back2'];
 const S = Object.fromEntries(SLOT_NAMES.map((n, i) => [n, i]));
 function palette(skin) {
   const c = (h) => new THREE.Color(h);
@@ -224,6 +231,7 @@ function palette(skin) {
     metal: c('#c9ccd1'), pads: c(skin.pants).multiplyScalar(1.25), hair, hair2: hair.clone().lerp(c('#ffffff'), 0.18),
     teeth: c('#f7f4ee'), dimple: c(skin.tone || '#c98e62').multiplyScalar(0.7), brow: hair.clone().multiplyScalar(0.55),
     horns: c(skin.horns || '#e8e0cc'), black: c('#111111'),
+    visor: c(st.visor || '#0b0b0e'), glow: c(st.glow || skin.accent), back: c(st.backColor || skin.accent), back2: c(st.backColor2 || skin.stripe),
   };
   return SLOT_NAMES.map((n) => P[n]);
 }
@@ -240,37 +248,65 @@ function part(geo, cls, slot = 0) { const m = new THREE.Mesh(geo); m.userData.cl
 
 function buildHelmet(skin) {
   const g = new THREE.Group();
+  const st = skin.style || {};
+  const shellCls = st.chrome ? 'chrome' : 'gloss', maskCls = st.chrome ? 'chrome' : 'gloss';
   const R = 0.15;
-  const dome = part(new THREE.SphereGeometry(R, sg(32), sg(16), 0, Math.PI * 2, 0, 1.2), 'gloss', S.helmet);
+  const dome = part(new THREE.SphereGeometry(R, sg(32), sg(16), 0, Math.PI * 2, 0, 1.2), shellCls, S.helmet);
   dome.scale.set(0.93, 1.0, 1.12); g.add(dome);
-  const shell = part(new THREE.SphereGeometry(R, sg(32), sg(12), -Math.PI * 0.22, Math.PI * 1.44, 1.15, 0.98), 'gloss', S.helmet);
+  const shell = part(new THREE.SphereGeometry(R, sg(32), sg(12), -Math.PI * 0.22, Math.PI * 1.44, 1.15, 0.98), shellCls, S.helmet);
   shell.scale.set(0.93, 1.0, 1.12); g.add(shell);
-  // center stripe follows the curve of the shell from forehead to the back
-  const stripe = part(new THREE.TorusGeometry(R * 1.005, 0.009, sg(6), sg(28), Math.PI - 0.55), 'gloss', S.stripe);
+  // center stripe follows the curve of the shell from forehead to the back (glowing on neon outfits)
+  const stripe = part(new THREE.TorusGeometry(R * 1.005, 0.009, sg(6), sg(28), Math.PI - 0.55), st.glow ? 'glow' : 'gloss', st.glow ? S.glow : S.stripe);
   stripe.rotation.y = Math.PI / 2; stripe.rotation.z = 0.3; stripe.scale.set(1.12, 1, 0.5); g.add(stripe);
+  // helmet decal on each side: a patch of the shell's own sphere, textured from the icon atlas
+  if (st.decal) for (const phi of [Math.PI, 0]) {
+    const d = part(new THREE.SphereGeometry(R * 1.012, sg(12), sg(10), phi - 0.5, 1.0, 0.62, 0.95), 'decal');
+    d.scale.set(0.93, 1.0, 1.12); g.add(d);
+  }
+  if (st.fin === 'spikes') { // dinosaur back plates along the top of the helmet, big to small
+    for (let i = 0; i < 5; i++) {
+      const a = -0.2 + i * 0.4, h = 0.13 - i * 0.014;
+      const sp = part(new THREE.ConeGeometry(0.05 - i * 0.004, h, sg(4), 1), 'gloss', S.stripe);
+      sp.scale.set(0.45, 1, 1.2);
+      const y = Math.cos(a) * R, z = Math.sin(a) * R * 1.12;
+      sp.position.set(0, y + Math.cos(a) * h * 0.38, z + Math.sin(a) * h * 0.38); sp.rotation.x = a;
+      g.add(sp);
+    }
+  } else if (st.fin === 'antenna') { // robot antennas with glowing tips
+    for (const sx of [-1, 1]) {
+      const rod = part(new THREE.CylinderGeometry(0.004, 0.006, 0.11, 6), 'gloss', S.metal);
+      rod.position.set(sx * 0.1, 0.1, 0.03); rod.rotation.z = -sx * 0.45; g.add(rod);
+      const tip = part(new THREE.SphereGeometry(0.014, sg(10), sg(8)), st.glow ? 'glow' : 'gloss', st.glow ? S.glow : S.stripe);
+      tip.position.set(sx * 0.124, 0.149, 0.03); g.add(tip);
+    }
+    for (const sx of [-1, 1]) { // ear bolts
+      const ear = part(new THREE.CylinderGeometry(0.03, 0.03, 0.022, sg(14)), shellCls, S.metal);
+      ear.rotation.z = Math.PI / 2; ear.position.set(sx * 0.142, -0.005, 0.025); g.add(ear);
+    }
+  }
   for (const sx of [-1, 1]) {
-    const jaw = part(new THREE.BoxGeometry(0.02, 0.075, 0.08), 'gloss', S.helmet);
+    const jaw = part(new THREE.BoxGeometry(0.02, 0.075, 0.08), shellCls, S.helmet);
     jaw.position.set(sx * 0.118, -0.07, -0.06); jaw.rotation.y = sx * 0.35; g.add(jaw);
-    const clip = part(new THREE.SphereGeometry(0.018, sg(10), sg(8)), 'gloss', S.mask);
+    const clip = part(new THREE.SphereGeometry(0.018, sg(10), sg(8)), maskCls, S.mask);
     clip.position.set(sx * 0.133, -0.02, -0.04); clip.scale.set(0.4, 1, 1); g.add(clip);
   }
   // face mask cage: thick coated bars like a real lineman/receiver mask
   for (const [y, r, arc] of [[-0.03, 0.152, 0.6], [-0.062, 0.15, 0.62], [-0.094, 0.143, 0.64], [-0.124, 0.122, 0.56]]) {
-    const bar = part(new THREE.TorusGeometry(r, 0.0085, sg(8), sg(28), Math.PI * arc), 'gloss', S.mask);
+    const bar = part(new THREE.TorusGeometry(r, 0.0085, sg(8), sg(28), Math.PI * arc), maskCls, S.mask);
     bar.rotation.x = Math.PI / 2; bar.rotation.z = Math.PI + Math.PI * (1 - arc) / 2; bar.position.set(0, y, 0.008);
     g.add(bar);
   }
   for (const sx of [-0.05, 0, 0.05]) {
-    const v = part(new THREE.CylinderGeometry(0.0075, 0.0075, 0.11, 8), 'gloss', S.mask);
+    const v = part(new THREE.CylinderGeometry(0.0075, 0.0075, 0.11, 8), maskCls, S.mask);
     v.position.set(sx, -0.075, -0.14 + Math.abs(sx) * 0.25); v.rotation.x = -0.18; g.add(v);
   }
   for (const sx of [-1, 1]) { // side bars that hook to the helmet
-    const sb = part(new THREE.CylinderGeometry(0.007, 0.007, 0.075, 8), 'gloss', S.mask);
+    const sb = part(new THREE.CylinderGeometry(0.007, 0.007, 0.075, 8), maskCls, S.mask);
     sb.position.set(sx * 0.118, -0.06, -0.075); sb.rotation.set(0.6, 0, sx * 0.35); g.add(sb);
   }
   const bumper = part(new THREE.BoxGeometry(0.05, 0.016, 0.014), 'cloth', S.bumper); // nose bumper
   bumper.position.set(0, -0.018, -0.155); g.add(bumper);
-  const visor = part(new THREE.SphereGeometry(R * 0.97, sg(24), sg(8), Math.PI * 1.5 - 0.85, 1.7, 1.28, 0.42), 'visor');
+  const visor = part(new THREE.SphereGeometry(R * 0.97, sg(24), sg(8), Math.PI * 1.5 - 0.85, 1.7, 1.28, 0.42), 'visor', S.visor);
   visor.scale.set(0.93, 1.0, 1.12); g.add(visor);
   const strap = part(new THREE.TorusGeometry(0.065, 0.008, 6, 18, Math.PI), 'cloth', S.white);
   strap.position.set(0, -0.11, -0.03); strap.rotation.set(-0.45, 0, Math.PI); g.add(strap);
@@ -369,7 +405,8 @@ function buildAccessories(skin) {
   if (helmetOn) put('head', buildHelmet(skin), new THREE.Vector3(0, eyeY + 0.03, eyeZ + 0.105));
   for (const s of ['L', 'R']) put('head', buildEye(meta.eyes[s].r * 0.95), new THREE.Vector3(...meta.eyes[s].c));
   const sh = meta.shoulder;
-  const collar = part(new THREE.TorusGeometry(0.075, 0.016, sg(8), sg(20)), 'cloth', S.accent);
+  const glowCls = st2.glow ? 'glow' : 'cloth';
+  const collar = part(new THREE.TorusGeometry(0.075, 0.016, sg(8), sg(20)), glowCls, st2.glow ? S.glow : S.accent);
   collar.rotation.x = Math.PI / 2;
   put('spine01', collar, new THREE.Vector3(0, meta.neckY + 0.005, sh[2] + 0.01));
   // cleats over the feet
@@ -381,13 +418,13 @@ function buildAccessories(skin) {
     const sole = part(new RoundedBoxGeometry(w * 0.92, 0.016, d * 0.9, 2, 0.007), 'cloth', S.sole);
     sole.position.y = -h / 2 + 0.006; shoe.add(sole);
     for (const sx of [-1, 1]) {
-      const st = part(new THREE.BoxGeometry(0.004, h * 0.35, d * 0.4), 'cloth', S.shoeStripe);
+      const st = part(new THREE.BoxGeometry(0.004, h * 0.35, d * 0.4), glowCls, st2.glow ? S.glow : S.shoeStripe);
       st.position.set(sx * (w / 2 + 0.001), -h * 0.05, -d * 0.05); st.rotation.x = 0.5; shoe.add(st);
     }
     put('foot.' + s, shoe, new THREE.Vector3((f.min[0] + f.max[0]) / 2, (f.min[1] + f.max[1]) / 2 + 0.004, (f.min[2] + f.max[2]) / 2 - 0.008));
   }
   // belt around the waist (covers the jersey/pants line)
-  const belt = part(new THREE.CylinderGeometry(1, 1, 0.045, sg(32), 1, true), 'cloth', S.accent);
+  const belt = part(new THREE.CylinderGeometry(1, 1, 0.045, sg(32), 1, true), glowCls, st2.glow ? S.glow : S.accent);
   belt.scale.set(WAIST.rx + 0.008, 1, WAIST.rz + 0.008);
   put('root', belt, new THREE.Vector3(WAIST.cx, WAIST.y, WAIST.cz));
   if (st2.crowns) for (const sx of [-1, 1]) {
@@ -416,6 +453,7 @@ function buildAccessories(skin) {
       put('lowerleg01.' + s, knee, new THREE.Vector3(LEGS[s].kneeX + sx * 0.002, info.meta.kneeY + 0.01, LEGS[s].kneeZ + 0.004));
     }
   }
+  if (st2.back) buildBackItem(st2.back, put);
   // hair (the top part only shows without a helmet) and smile
   const hair = buildHair(skin);
   if (!helmetOn && !st2.referee) put('head', hair.top, new THREE.Vector3());
@@ -462,6 +500,51 @@ function buildAccessories(skin) {
   return list;
 }
 
+// Back items (Daily Shop): a cape or a rocket pack, rigid on the upper spine.
+function buildBackItem(kind, put) {
+  const sh = DATA.info.meta.shoulder, back = CHEST.back;
+  if (kind === 'cape') {
+    // hangs from the shoulders, flares out a little and away from the legs
+    // two strips (cape + trim along the hem) bent by the same drape: wider at the hem, soft folds, away from the legs
+    const W = sh[0] * 1.8, L = 0.68, T = 0.045;
+    const strip = (y0, y1, rows, slot) => {
+      const g = new THREE.PlaneGeometry(W, y1 - y0, 10, rows), p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), k = (y0 + (y1 - y0) / 2 - p.getY(i)) / L;   // 0 at the top, 1 at the hem
+        const u = x / W;
+        p.setX(i, x * (0.8 + 0.35 * k));
+        p.setY(i, -k * L);
+        p.setZ(i, k * k * 0.09 + (1 - Math.cos(u * Math.PI)) * 0.035 + Math.sin(u * Math.PI * 5) * 0.012 * k);
+      }
+      g.computeVertexNormals();
+      return part(g, 'cloth', slot);
+    };
+    const at = new THREE.Vector3(0, sh[1] + 0.03, back + 0.075);
+    put('spine01', strip(0, L - T, 9, S.back), at);
+    put('spine01', strip(L - T, L, 1, S.back2), at);
+    // clasps on the shoulders
+    for (const sx of [-1, 1]) {
+      const clasp = part(new THREE.SphereGeometry(0.024, sg(10), sg(8)), 'gloss', S.back2);
+      clasp.scale.set(1, 1, 0.6);
+      put('spine01', clasp, new THREE.Vector3(sx * W * 0.38, sh[1] + 0.02, back + 0.07));
+    }
+  } else if (kind === 'jetpack') {
+    const pack = new THREE.Group();
+    const body = part(new RoundedBoxGeometry(0.2, 0.24, 0.07, 2, 0.02), 'gloss', S.back); pack.add(body);
+    for (const sx of [-1, 1]) {
+      const tank = part(new THREE.CylinderGeometry(0.042, 0.042, 0.2, sg(14)), 'gloss', S.back2);
+      tank.position.set(sx * 0.08, 0, 0.04); pack.add(tank);
+      const cap = part(new THREE.SphereGeometry(0.042, sg(14), sg(6), 0, Math.PI * 2, 0, Math.PI / 2), 'gloss', S.back2);
+      cap.position.set(sx * 0.08, 0.1, 0.04); pack.add(cap);
+      const nozzle = part(new THREE.CylinderGeometry(0.028, 0.04, 0.05, sg(12), 1, true), 'gloss', S.metal);
+      nozzle.position.set(sx * 0.08, -0.125, 0.04); pack.add(nozzle);
+      const flame = part(new THREE.ConeGeometry(0.024, 0.075, sg(10)), 'glow', S.glow);
+      flame.rotation.x = Math.PI; flame.position.set(sx * 0.08, -0.185, 0.04); pack.add(flame);
+    }
+    put('spine01', pack, new THREE.Vector3(0, sh[1] - 0.13, back + 0.06));
+  }
+}
+
 // Merge plain geometries (position, normal, optional uv) + rigid bone binding into one skinned geometry.
 function mergeSkinned(items, withUv) {
   let nv = 0, ni = 0;
@@ -496,7 +579,8 @@ function mergeSkinned(items, withUv) {
 const ACC_CACHE = new Map();
 function accessoryKey(skin) {
   const st = skin.style || {};
-  return [BODY_KEY, SEGK, skin.hairStyle || 'wavy', skin.helmetOn !== false, !!skin.horns, !!st.crowns, !!st.towel, !!st.pads, !!st.referee, skin.smile !== false].join('|');
+  return [BODY_KEY, SEGK, skin.hairStyle || 'wavy', skin.helmetOn !== false, !!skin.horns, !!st.crowns, !!st.towel, !!st.pads, !!st.referee, skin.smile !== false,
+    !!st.glow, !!st.chrome, !!st.decal, st.fin || '', st.back || ''].join('|');
 }
 function accessoryGeometry(skin) {
   const key = accessoryKey(skin);
@@ -520,7 +604,7 @@ function accessoryGeometry(skin) {
   (byCls.cloth = byCls.cloth || []).unshift({ geo: JERSEY_GEO, skinIndex: JERSEY_GEO.attributes.skinIndex.array, skinWeight: JERSEY_GEO.attributes.skinWeight.array, slot: 0 });
   const out = {};
   for (const [cls, items] of Object.entries(byCls)) {
-    out[cls] = mergeSkinned(items, cls === 'crown' || cls === 'towel');
+    out[cls] = mergeSkinned(items, cls === 'crown' || cls === 'towel' || cls === 'decal');
     out[cls].shell = cls === 'cloth' ? shell : 0;
     for (const it of items) if (it.geo !== JERSEY_GEO) it.geo.dispose();
   }
@@ -551,6 +635,7 @@ function disposeShared(g) {
 function paintShell(skin, arr) {
   const jp = JERSEY_GEO.attributes.position.array, sh = DATA.info.meta.shoulder, st = skin.style || {};
   const base = new THREE.Color(skin.jersey), white = new THREE.Color('#ffffff'), trim = new THREE.Color(skin.accent), black = new THREE.Color('#111111');
+  const pat2 = new THREE.Color(st.pat2 || skin.stripe);
   for (let i = 0; i < jp.length / 3; i++) {
     const x = jp[i * 3], y = jp[i * 3 + 1], z = jp[i * 3 + 2];
     let col = base;
@@ -576,9 +661,70 @@ function paintShell(skin, arr) {
       // wide bands only: the shell is colored per vertex, so thin lines would look ragged
       if (st.yoke && dy < 0.08) col = trim;
       else if (st.hoops && ((dy > 0.13 && dy < 0.22) || (dy > 0.3 && dy < 0.39))) col = trim;
+      else if (st.pattern) col = patternColor(st.pattern, x, y, z, dy, sh, base, trim, pat2) || col;
     }
     setC(arr, i, col);
   }
+}
+// Daily Shop jersey patterns (big shapes only: the shell is painted per vertex, ~2 cm apart).
+// a = accent color, b = second pattern color (style.pat2, else the stripe color). Returns null = keep the base.
+const tri = (v) => 2 * Math.abs(v - Math.floor(v + 0.5));                 // 0..1 zig-zag
+const hash3 = (x, y, z) => { const v = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return v - Math.floor(v); };
+const _mix = new THREE.Color();
+function patternColor(kind, x, y, z, dy, sh, base, a, b) {
+  const zc = sh[2], front = z < zc, ang = Math.atan2(x, zc - z);   // 0 = straight ahead, ±PI = the back
+  const torso = Math.abs(x) < 0.21;
+  const h = (y - WAIST.y) / (sh[1] - WAIST.y);                    // 0 at the belt, 1 at the shoulders
+  switch (kind) {
+    case 'flames': { // flame tongues licking up from the belt, hot core
+      if (!torso) return null;
+      const f = 0.2 + 0.42 * Math.pow(0.5 + 0.5 * Math.cos(ang * 6), 2) + 0.06 * Math.sin(ang * 17);
+      return h < f * 0.5 ? b : h < f ? a : null;
+    }
+    case 'camo': {
+      const n = Math.sin(x * 31 + 1.7) * Math.cos(y * 23) + Math.sin(z * 29 + y * 13 + 0.5) + 0.6 * Math.sin((x + z) * 47 - y * 17);
+      return n > 0.7 ? a : n < -0.7 ? b : null;
+    }
+    case 'stars': { // twinkling star speckles over a soft nebula glow
+      if (hash3(x, y, z) > 0.972) return b;
+      const n = Math.sin(x * 9 + y * 7 + 1) + Math.sin(z * 11 - y * 5) + 0.5 * Math.sin(x * 21 - z * 17);
+      return n > 0.6 ? _mix.copy(base).lerp(a, Math.min(0.85, (n - 0.6) * 0.7)) : null;
+    }
+    case 'chevron': { // a big V yoke on the chest and back, above the numbers
+      if (!torso) return null;
+      const d = dy + Math.abs(x) * 0.65;                              // a V from the shoulders to the chest
+      return d > 0.0 && d < 0.085 ? a : d >= 0.085 && d < 0.13 ? b : null;
+    }
+    case 'sash': { // diagonal belt from one shoulder to the other hip
+      if (!torso) return null;
+      const d = dy + x * 0.9;
+      return d > 0.12 && d < 0.23 ? a : d >= 0.23 && d < 0.27 ? b : null;
+    }
+    case 'candy': return ((y + x * 0.9 + 4) / 0.15) % 1 < 0.45 ? a : null;   // candy-cane stripes
+    case 'split': return x > 0 ? a : null;                                      // two-tone halves
+    case 'stripes': return torso && dy > 0.02 && ((dy / 0.11) % 1) > 0.5 ? a : null; // sailor stripes
+    case 'sweater': { // holiday sweater band with a zig-zag
+      if (dy < 0.07 || dy > 0.3) return dy > 0.36 && dy < 0.42 ? b : null;
+      const zz = 0.185 + 0.05 * (tri(ang * 6 / Math.PI) - 0.5);
+      return Math.abs(dy - zz) < 0.03 ? a : b;
+    }
+    case 'frost': { // frosted shoulders and icicles up from the belt
+      if (dy < 0.09 + 0.08 * tri(ang * 5 / Math.PI + 0.3)) return b;
+      return torso && h < 0.12 + 0.2 * tri(ang * 8 / Math.PI) ? a : null;
+    }
+    case 'dino': { // light belly, dark stripes on the back and sides
+      if (front && Math.abs(x) < 0.1 && torso) return b;
+      return (!front || Math.abs(x) > 0.1) && Math.sin(y * 46 + Math.abs(x) * 14) > 0.35 ? a : null;
+    }
+    case 'mech': { // armor plates with a power core
+      if (!torso) return null;
+      if (front && Math.hypot(x, dy - 0.16) < 0.05) return a;
+      if (front && Math.abs(x) < 0.15 && dy > 0.05 && dy < 0.27) return b;
+      if (!front && Math.abs(x) < 0.13 && dy > 0.03 && dy < 0.3) return b;
+      return Math.abs(x) > 0.15 && dy > 0.08 ? b : null;
+    }
+  }
+  return null;
 }
 
 // ---------- jersey numbers: one shared atlas with 0..99 ----------
@@ -601,8 +747,11 @@ function numberAtlas() {
   NUM_ATLAS.anisotropy = 4;
   return NUM_ATLAS;
 }
-function numberMaterial() {
-  const m = new THREE.MeshStandardMaterial({ map: numberAtlas(), transparent: true, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -4 });
+function numberMaterial() { return twoToneMaterial(numberAtlas(), 'fr-numbers', 0.75); }
+function decalMaterial() { return twoToneMaterial(decalAtlas(), 'fr-decal', 0.3); }
+// R = fill, G = outline coverage of a white atlas; fillC/strokeC vertex attributes color them per player
+function twoToneMaterial(map, key, roughness) {
+  const m = new THREE.MeshStandardMaterial({ map, transparent: true, roughness, polygonOffset: true, polygonOffsetFactor: -4 });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 fillC;\nattribute vec3 strokeC;\nvarying vec3 vFill;\nvarying vec3 vStroke;')
@@ -611,8 +760,106 @@ function numberMaterial() {
       .replace('#include <common>', '#include <common>\nvarying vec3 vFill;\nvarying vec3 vStroke;')
       .replace('#include <map_fragment>', 'vec4 nt = texture2D( map, vMapUv );\nfloat cov = clamp( nt.r + nt.g, 0.0, 1.0 );\ndiffuseColor = vec4( ( vFill * nt.r + vStroke * nt.g ) / max( cov, 0.001 ), opacity * cov );');
   };
-  m.customProgramCacheKey = () => 'fr-numbers';
+  m.customProgramCacheKey = () => key;
   return m;
+}
+
+// ---------- helmet decals: one shared 4x4 icon atlas (R = fill, G = outline), cells in HELMET_DECALS order ----------
+let DECAL_ATLAS = null;
+function decalAtlas() {
+  if (DECAL_ATLAS) return DECAL_ATLAS;
+  const C = 128, c = document.createElement('canvas'); c.width = c.height = C * 4;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
+  DECALS.forEach((name, i) => {
+    g.save();
+    g.translate((i % 4) * C + C / 2, Math.floor(i / 4) * C + C / 2);
+    g.beginPath(); drawIcon(g, name);
+    g.lineJoin = 'round'; g.lineWidth = 11; g.strokeStyle = '#00ff00'; g.stroke();
+    g.fillStyle = '#ff0000'; g.fill('evenodd');
+    if (name === 'planet') { // the ring passes in front of the planet
+      g.beginPath(); g.ellipse(0, 0, 50, 14, -0.35, 0.15, Math.PI - 0.15); g.lineWidth = 9; g.strokeStyle = '#00ff00'; g.stroke();
+      g.lineWidth = 5; g.strokeStyle = '#ff0000'; g.stroke();
+    }
+    g.restore();
+  });
+  DECAL_ATLAS = new THREE.CanvasTexture(c);
+  DECAL_ATLAS.colorSpace = THREE.NoColorSpace;
+  DECAL_ATLAS.anisotropy = 4;
+  return DECAL_ATLAS;
+}
+// Icon paths in a ~100 px box around (0, 0)
+function drawIcon(g, name) {
+  const star = (n, R, r, rot = -Math.PI / 2) => { for (let k = 0; k < n * 2; k++) { const a = rot + k * Math.PI / n, q = k % 2 ? r : R; k ? g.lineTo(Math.cos(a) * q, Math.sin(a) * q) : g.moveTo(Math.cos(a) * q, Math.sin(a) * q); } g.closePath(); };
+  const circle = (x, y, r, ccw = false) => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2, ccw); };
+  switch (name) {
+    case 'flame':
+      g.moveTo(0, 46); g.bezierCurveTo(-34, 46, -42, 14, -26, -8); g.bezierCurveTo(-22, 4, -14, 8, -10, 6);
+      g.bezierCurveTo(-18, -18, -4, -34, 4, -48); g.bezierCurveTo(8, -26, 26, -20, 22, -2); g.bezierCurveTo(28, -6, 30, -14, 30, -18);
+      g.bezierCurveTo(44, 4, 40, 46, 0, 46); g.closePath();
+      g.moveTo(0, 38); g.bezierCurveTo(-16, 38, -18, 18, -6, 6); g.bezierCurveTo(-4, 16, 6, 16, 6, 4); g.bezierCurveTo(18, 14, 18, 38, 0, 38); g.closePath();
+      break;
+    case 'snowflake':
+      for (let k = 0; k < 6; k++) {
+        const a = k * Math.PI / 3, ca = Math.cos(a), sa = Math.sin(a), pt = (x, y) => [x * ca - y * sa, x * sa + y * ca];
+        const poly = [[-5, 0], [-5, -30], [-18, -38], [-14, -44], [-4, -38], [-5, -48], [5, -48], [4, -38], [14, -44], [18, -38], [5, -30], [5, 0]];
+        poly.forEach(([x, y], j) => { const [px, py] = pt(x, y); j ? g.lineTo(px, py) : g.moveTo(px, py); }); g.closePath();
+      }
+      break;
+    case 'planet': circle(0, 0, 30); break;
+    case 'star': star(5, 50, 21); break;
+    case 'bolt': g.moveTo(10, -50); g.lineTo(-30, 6); g.lineTo(-4, 6); g.lineTo(-14, 50); g.lineTo(30, -10); g.lineTo(4, -10); g.closePath(); break;
+    case 'crown':
+      g.moveTo(-44, 30); g.lineTo(-48, -26); g.lineTo(-22, -2); g.lineTo(0, -40); g.lineTo(22, -2); g.lineTo(48, -26); g.lineTo(44, 30); g.closePath();
+      g.rect(-44, 34, 88, 12); circle(0, -2, 8, true);
+      break;
+    case 'shuriken': star(4, 50, 14, -Math.PI / 4); circle(0, 0, 8, true); break;
+    case 'gear':
+      for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8, r = k % 2 ? 34 : 46; const a1 = a - Math.PI / 16 + 0.06, a2 = a + Math.PI / 16 - 0.06;
+        k ? g.lineTo(Math.cos(a1) * r, Math.sin(a1) * r) : g.moveTo(Math.cos(a1) * r, Math.sin(a1) * r); g.lineTo(Math.cos(a2) * r, Math.sin(a2) * r); }
+      g.closePath(); circle(0, 0, 14, true);
+      break;
+    case 'claw':
+      for (const x of [-26, 0, 26]) { g.moveTo(x - 8, 46); g.quadraticCurveTo(x - 14, -6, x + 10, -48); g.quadraticCurveTo(x + 2, -4, x + 8, 46); g.closePath(); }
+      break;
+    case 'anchor':
+      circle(0, -38, 10); circle(0, -38, 4, true);
+      g.rect(-5, -28, 10, 66); g.rect(-24, -18, 48, 9);
+      g.moveTo(-42, 4); g.quadraticCurveTo(-36, 44, 0, 46); g.quadraticCurveTo(36, 44, 42, 4); g.lineTo(32, 12); g.quadraticCurveTo(26, 34, 0, 36); g.quadraticCurveTo(-26, 34, -32, 12); g.closePath();
+      break;
+    case 'tree':
+      g.moveTo(0, -50); g.lineTo(-22, -16); g.lineTo(-12, -16); g.lineTo(-34, 16); g.lineTo(-20, 16); g.lineTo(-42, 38); g.lineTo(42, 38); g.lineTo(20, 16); g.lineTo(34, 16); g.lineTo(12, -16); g.lineTo(22, -16); g.closePath();
+      g.rect(-7, 38, 14, 12);
+      break;
+    case 'peppermint':
+      circle(0, 0, 44);
+      for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; g.moveTo(0, 0); g.arc(0, 0, 40, a, a + 0.5); g.quadraticCurveTo(Math.cos(a + 0.6) * 14, Math.sin(a + 0.6) * 14, 0, 0); }
+      break;
+    case 'shield':
+      g.moveTo(0, -48); g.quadraticCurveTo(24, -36, 42, -38); g.quadraticCurveTo(44, 24, 0, 50); g.quadraticCurveTo(-44, 24, -42, -38); g.quadraticCurveTo(-24, -36, 0, -48); g.closePath();
+      star(5, 24, 10);
+      break;
+    case 'paw':
+      g.moveTo(0, 6); g.bezierCurveTo(-28, 6, -34, 40, -14, 42); g.quadraticCurveTo(0, 36, 14, 42); g.bezierCurveTo(34, 40, 28, 6, 0, 6); g.closePath();
+      for (const [x, y] of [[-34, -10], [-13, -32], [13, -32], [34, -10]]) circle(x, y, 11);
+      break;
+    case 'heart': g.moveTo(0, 44); g.bezierCurveTo(-60, 0, -36, -48, 0, -20); g.bezierCurveTo(36, -48, 60, 0, 0, 44); g.closePath(); break;
+    case 'comet':
+      circle(22, -22, 22);
+      g.moveTo(8, -6); g.lineTo(-46, 46); g.lineTo(38, -8); g.closePath();
+      break;
+  }
+}
+// Per-player decal: which atlas cell (uv) and its fill/outline colors
+function decalGeometry(src, skin) {
+  const st = skin.style || {}, n = src.attributes.position.count, suv = src.attributes.uv.array;
+  const cell = Math.max(0, DECALS.indexOf(st.decal)), cx = cell % 4, cy = Math.floor(cell / 4);
+  const uv = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) { uv[i * 2] = (cx + suv[i * 2]) / 4; uv[i * 2 + 1] = 1 - (cy + 1 - suv[i * 2 + 1]) / 4; }
+  const fill = colorAttr(n), stroke = colorAttr(n);
+  const f = new THREE.Color(st.decalColor || skin.accent), o = new THREE.Color(st.decalEdge || '#111111');
+  for (let i = 0; i < n; i++) { setC(fill.array, i, f); setC(stroke.array, i, o); }
+  return shareGeometry(src, { uv: new THREE.BufferAttribute(uv, 2), fillC: fill, strokeC: stroke });
 }
 const PLATE_CACHE = new Map();
 function numberGeometry(skin) {
@@ -753,7 +1000,7 @@ export function crowdGeometry(body = 'm') {
 
 // ---------- the player ----------
 const BOUNDS = new THREE.Sphere(new THREE.Vector3(0, 0.95, 0), 1.45);   // covers every pose and emote
-const ACC_CLASSES = ['cloth', 'gloss', 'shiny', 'visor', 'crown', 'towel'];
+const ACC_CLASSES = ['cloth', 'gloss', 'shiny', 'visor', 'crown', 'towel', 'chrome', 'glow', 'decal'];
 
 // Returns { mesh, bones: {name: Bone}, hand, setHelmet(on), setDetail('full'|'mid'|'none'), dispose(), detail }
 // `mesh` is a Group holding the skeleton; the detail meshes are SkinnedMeshes inside it sharing one Skeleton.
@@ -824,7 +1071,8 @@ export function createHuman(skin, opts = {}) {
       const a = acc[cls];
       if (!a) continue;
       let geo;
-      if (cls === 'visor' || cls === 'crown' || cls === 'towel') geo = shareGeometry(a.geo, {});
+      if (cls === 'crown' || cls === 'towel') geo = shareGeometry(a.geo, {});
+      else if (cls === 'decal') geo = decalGeometry(a.geo, skin);
       else {
         const nv = a.geo.attributes.position.count, c = colorAttr(nv);
         if (a.shell) paintShell(skin, c.array);

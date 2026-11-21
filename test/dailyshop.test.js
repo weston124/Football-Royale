@@ -39,7 +39,7 @@ test('rotation is deterministic per UTC date and changes the next day', () => {
   for (let i = 0; i < list.length; i++) {
     const s = list[i], ids = dailyIds(s);
     assert.equal(s.featured.length, DAILY.featured);
-    assert.ok(ids.length >= 6 && ids.length <= 8, 'six to eight items');
+    assert.equal(ids.length, DAILY.featured + DAILY.outfits + DAILY.emotes, 'nine items');
     assert.equal(new Set(ids).size, ids.length, 'no duplicates');
     for (const id of s.featured) assert.ok(DAILY_POOL.find((x) => x.id === id).rarity >= 3, 'featured are Epic/Legendary');
     assert.ok(ids.some((id) => id.startsWith('emote')), 'emotes every day');

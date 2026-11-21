@@ -1,10 +1,11 @@
 // The Daily Item Shop: a new pick of items every day at midnight UTC.
 // The pick comes from a seeded RNG on the UTC date, so it is the same for every player and
 // every server; the server decides what can be bought (server/accounts.js buy()).
-import { DAILY_POOL, SHOP } from './skins.js';
+import { DAILY_POOL, SHOP, NEW_BATCH_DATE, isNewItem } from './skins.js';
 import { makeRng } from './rng.js';
 
-export const DAILY = { featured: 2, outfits: 3, emotes: 2, maxForced: 3 };
+// newOutfits/newEmotes: guaranteed spots for items of the newest batch while they are NEW (isNewItem)
+export const DAILY = { featured: 2, outfits: 4, emotes: 3, maxForced: 3, newOutfits: 2, newEmotes: 1 };
 export const DAY_MS = 86400_000;
 
 // 'YYYY-MM-DD' of the UTC day that contains time t
@@ -30,13 +31,26 @@ function shuffled(arr, rnd) {
 
 export const dailyItem = (id) => DAILY_POOL.find((i) => i.id === id) || null;
 
+// The newest batch in a fixed (seeded) order, so its spotlight cycles through every new item
+const BATCH_ORDER = shuffled(DAILY_POOL.filter((i) => i.added === NEW_BATCH_DATE), makeRng(seedOf('football-royale-batch|' + NEW_BATCH_DATE)));
+const cycle = (list, start, n) => (list.length ? Array.from({ length: Math.min(n, list.length) }, (_, k) => list[(start + k) % list.length]) : []);
+
 function pick(dateKey) {
   const rnd = makeRng(seedOf('football-royale-daily|' + dateKey));
   const outfits = shuffled(DAILY_POOL.filter((i) => i.kind === 'skin'), rnd);
   const emotes = shuffled(DAILY_POOL.filter((i) => i.kind === 'emote'), rnd);
+  // While the newest batch is NEW, every day spotlights some of it: one Featured outfit, a few more outfits
+  // and an emote, walking through the batch in order (all of it shows up within about a week).
+  const fresh = BATCH_ORDER.filter((i) => isNewItem(i, dateKey));
+  const day = Math.round((Date.parse(dateKey) - Date.parse(NEW_BATCH_DATE)) / 86400_000);
+  const freshOut = fresh.filter((i) => i.kind === 'skin'), freshEm = fresh.filter((i) => i.kind === 'emote');
+  const spotFeat = cycle(freshOut.filter((i) => i.rarity >= 3), day, 1);
+  const spotOut = cycle(freshOut, day * DAILY.newOutfits, DAILY.newOutfits);
+  const spotEm = cycle(freshEm, day * DAILY.newEmotes, DAILY.newEmotes);
+  const take = (first, rest, n, skip = []) => [...new Set([...first, ...rest])].filter((i) => !skip.includes(i)).slice(0, n);
   // Featured: the big cards, always Epic or Legendary outfits
-  const featured = outfits.filter((i) => i.rarity >= 3).slice(0, DAILY.featured);
-  const regular = [...outfits.filter((i) => !featured.includes(i)).slice(0, DAILY.outfits), ...emotes.slice(0, DAILY.emotes)];
+  const featured = take(spotFeat, outfits.filter((i) => i.rarity >= 3), DAILY.featured);
+  const regular = [...take(spotOut, outfits, DAILY.outfits, featured), ...take(spotEm, emotes, DAILY.emotes)];
   return { featured, regular };
 }
 

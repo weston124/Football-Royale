@@ -363,6 +363,20 @@
       </div>
       <div id="shop-msg" class="error"></div>
     </div>
+    <!-- 🔍 item preview pop-up (the Locker Room preview canvas moves in here while it is open) -->
+    <div id="shop-preview" class="hidden">
+      <div class="sp-card" id="sp-card">
+        <button id="sp-close" class="small" aria-label="Close preview">✖</button>
+        <div class="sp-stage" id="sp-stage"><small class="sp-hint">↔ drag to spin</small></div>
+        <div class="sp-info">
+          <span id="sp-new" class="tag-new hidden">NEW!</span>
+          <div class="nm" id="sp-name"></div>
+          <div class="meta" id="sp-meta"></div>
+          <div class="sp-feat" id="sp-feat"></div>
+          <button id="sp-buy" data-buy=""></button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="reward" class="hidden"></div>

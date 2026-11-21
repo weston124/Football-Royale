@@ -124,10 +124,19 @@ of them, parked vehicles cost nothing. Clients interpolate them like players.
 ## Item shops and Ball Bucks
 Two shops, one screen (`#shop`, tabs; the Daily Shop is the default tab). Prices: every item costs 1,000+ Ball Bucks.
 - **🐂 Longhorn Item Shop**: `SHOP` in `shared/skins.js` (presets/emotes with `price` and no `shop` field). Always for sale.
-- **⭐ Daily Item Shop**: `DAILY_POOL` = presets/emotes with `shop: 'daily'` (14 outfits, 5 emotes, 1,000-2,500).
+- **⭐ Daily Item Shop**: `DAILY_POOL` = presets/emotes with `shop: 'daily'` (28 outfits, 11 emotes, 1,000-2,500;
+  Uncommon 1,200 · Rare 1,500 · Epic 2,000 · Legendary 2,500, emotes 1,000-2,000).
   `dailyShop(utcDate)` shuffles the pool with `makeRng(FNV-1a('football-royale-daily|YYYY-MM-DD'))` and picks
-  2 Featured (Epic/Legendary outfits) + 3 outfits + 2 emotes, so every server and player gets the same shop; it changes
-  at 00:00 UTC. The server sends it in `info.shop = {date, resetsAt, now, featured:[id], items:[id]}` (ids index
+  2 Featured (Epic/Legendary outfits) + 4 outfits + 3 emotes (`DAILY`), so every server and player gets the same shop;
+  it changes at 00:00 UTC.
+- **New batches**: items with `added: NEW_BATCH_DATE` ("Big Game Drop", 14 outfits + 6 emotes, 2026-11-21) are NEW for
+  `NEW_DAYS` (30) days (`isNewItem(item, date)`: NEW! badge on the cards, the preview and the Item Shop button). While
+  new, each day spotlights part of the batch in a fixed seeded order (1 Featured Epic/Legendary outfit, 2 more outfits,
+  1 emote; the rest of the day is the normal random pick), so all of it is in the shop within a week; afterwards it is
+  a normal part of the pool. For the next batch: give its items `added` = the new date and move `NEW_BATCH_DATE`.
+- Shop cards: clicking the art (🔍) opens `#shop-preview`: the Locker Room preview canvas moves into the pop-up and
+  shows the outfit on a turntable (drag to spin) or your player doing the emote, with feature chips and a buy button.
+  Emote card posters use `EMOTES[].art` (seconds into the emote). The server sends it in `info.shop = {date, resetsAt, now, featured:[id], items:[id]}` (ids index
   `DAILY_POOL`; `now` lets the client's countdown follow the server clock) and pushes a new `info` at midnight.
 - `buy{item}` → `accounts.buy(user, id, admin.todayShop())`: Longhorn items always, Daily items only while in today's
   shop (`featured` or `items`), otherwise an `error`. Owned ids live in `profile.owned` forever; `canUseSkin` /
@@ -136,7 +145,17 @@ Two shops, one screen (`#shop`, tabs; the Daily Shop is the default tab). Prices
   day, stored in `admin.json` `featured:{date, ids}`, ignored after that date); `state` returns `shop`, `forced`, `shopPool`.
 - Outfit `style` options drawn by `human.js`: `bolts`, `towel`, `crowns`, `pads`, `crewSocks`, `armSleeve`,
   `whiteNumbers`, `cleats`, `referee`, plus `yoke` (shoulders in the accent color) and `hoops` (two accent bands).
-  Emotes 9-13 (Spin Move, Air Guitar, Sprinkler, Chest Flex, Wave Ripple) are animated in `animatePlayer`.
+  Newer ones (lists in `shared/skins.js`, all baked into the existing per-player meshes or one extra shared-material
+  mesh, so a full-detail player costs at most ~3 more draw calls and nothing at mid/crowd LOD):
+  `pattern` (`OUTFIT_PATTERNS`: flames, camo, stars, chevron, sash, candy, split, sweater, frost, dino, mech, stripes;
+  painted per vertex on the jersey shell, second color `pat2`), `gloves`, `visor` (tint), `glow` (unlit glowing helmet
+  stripe/collar/belt/cleat stripes), `chrome` (metal helmet + mask), `decal` (`HELMET_DECALS`: icon on both helmet sides
+  from one shared atlas, `decalColor`/`decalEdge`), `fin` (`spikes`, `antenna`), `back` (`cape`, `jetpack`;
+  `backColor`/`backColor2`), `chute` ([canopy, stripe] parachute colors). Style always comes from the preset, never the client.
+  Emotes 9-19 (Spin Move, Air Guitar, Sprinkler, Chest Flex, Wave Ripple, Robo Rumble, Field Goal Kick, Trophy Hoist
+  (gold cup prop), End Zone Twirl, Hike Hike Hike, Dino Stomp) are animated in `animatePlayer`.
+- `PORT=4803 node tools/skinshot.js out.png [presetIds]` (env `EMOTES=14,15`, `ZOOM=2`, `COLS=6`, `DETAIL=lazy`):
+  Playwright close-ups of outfits front/back or emote poses; `test/newbatch.test.js` checks the batch.
 - Real-money Ball Bucks packs are disabled ("Coming soon"); Ball Bucks come from matches and admin gifts.
 
 ## Graphics quality (client/js/quality.js)

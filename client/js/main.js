@@ -1,8 +1,8 @@
 // Locker Room (menu), squads, news, broadcasts, party pop-ups and starting matches.
 import * as THREE from 'three';
 import { generateMap } from '/shared/map.js';
-import { SKIN_PRESETS, SKIN_TONES, HAIR_COLORS, EYE_COLORS, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote } from '/shared/skins.js';
-import { dailyShop, utcDateKey, anyShopItem, dailyItem } from '/shared/shop.js';
+import { SKIN_PRESETS, SKIN_TONES, HAIR_COLORS, EYE_COLORS, EMOTES, SHOP, sanitizeSkin, canUseSkin, canUseEmote, isNewItem } from '/shared/skins.js';
+import { dailyShop, utcDateKey, anyShopItem, dailyItem, dailyIds } from '/shared/shop.js';
 import { RARITIES, WEAPONS, GUN_IDS } from '/shared/weapons.js';
 import { createPlayer, animatePlayer, disposePlayer, setupEnvironment, loadHuman, createFootball } from './models.js';
 
@@ -152,6 +152,7 @@ function previewLoop(ts) {
   if (!previewRunning) return;
   requestAnimationFrame(previewLoop);
   const t = ts / 1000;
+  if (shopPreview) { animateShopPreview(t); pr.render(pScene, pCam); return; }
   if (pModel) {
     // stand in the hero pose; show off an emote every so often
     if (!previewEmoteStart) previewEmoteStart = t;
@@ -509,6 +510,7 @@ net.on('info', (m) => {
   info = m;
   if (m.shop) shopClock = m.shop.now - Date.now(); // server time - my time (the countdown follows the server)
   renderNews();
+  updateShopButton();
   if (!$('shop').classList.contains('hidden')) renderShop();
 });
 function renderNews() {
@@ -619,6 +621,8 @@ net.on('bought', (m) => {
   if (item && item.kind === 'skin') wearSkin(item.id);
 });
 const artCache = new Map();
+const shopDate = () => todaysShop().date;
+const NEW_TAG = '<span class="tag-new">NEW!</span>';
 const ART_FRAME = { 8: 2.4, 9: 1.6, 10: 0.6, 11: 0.35, 12: 0.4, 13: 0.5 }; // the best moment of each emote for its poster
 function itemArt(item) {
   if (artCache.has(item.id)) return artCache.get(item.id);
@@ -627,7 +631,7 @@ function itemArt(item) {
     : item.shop === 'daily' ? { ...profile.skin } : { ...profile.skin, horns: profile.skin.horns || '#f3ead2' };
   const m = createPlayer(skin);
   m.rotation.y = Math.PI + 0.35;
-  animatePlayer(m, { speed: 0, phase: 0, emote: item.emote || 3, emoteT: ART_FRAME[item.emote] ?? 0.55, t: 1 }, 1 / 60);
+  animatePlayer(m, { speed: 0, phase: 0, emote: item.emote || 3, emoteT: ART_FRAME[item.emote] ?? EMOTES.find((e) => e.id === item.emote)?.art ?? 0.55, t: 1 }, 1 / 60);
   const was = pModel; if (pModel) pModel.visible = false;
   pScene.add(m);
   pr.render(pScene, pCam);
@@ -642,8 +646,8 @@ const buyClass = (item) => (account.owned.includes(item.id) ? 'owned' : account.
 function card(item, isNew) {
   const r = RARITIES[item.rarity || 0];
   return `<div class="card" style="--rc:${r.color}">
-      ${isNew ? '<span class="tag-new">NEW</span>' : ''}
-      <div class="art"><img src="${itemArt(item)}" alt=""></div>
+      ${isNew ? NEW_TAG : ''}
+      <div class="art" data-preview="${item.id}" title="Preview"><img src="${itemArt(item)}" alt=""><span class="zoom">🔍</span></div>
       <div class="info">
         <div class="nm">${esc(item.name)}</div>
         <div class="meta">${r.name} ${item.kind === 'skin' ? 'Outfit' : 'Emote'}</div>
@@ -659,7 +663,8 @@ function renderDaily() {
   $('daily-featured').innerHTML = d.featured.map(dailyItem).filter(Boolean).map((item) => {
     const r = RARITIES[item.rarity || 0];
     return `<div class="fcard" style="--rc:${r.color}">
-      <div class="art"><img src="${itemArt(item)}" alt=""></div>
+      ${isNewItem(item, d.date) ? NEW_TAG : ''}
+      <div class="art" data-preview="${item.id}" title="Preview"><img src="${itemArt(item)}" alt=""><span class="zoom">🔍</span></div>
       <div class="info">
         <span class="ribbon">★ FEATURED</span>
         <div class="nm">${esc(item.name)}</div>
@@ -667,7 +672,10 @@ function renderDaily() {
         <button data-buy="${item.id}" class="${buyClass(item)}">${buyLabel(item)}</button>
       </div></div>`;
   }).join('');
-  $('daily-items').innerHTML = d.items.map(dailyItem).filter(Boolean).map((item) => card(item, false)).join('');
+  // the new batch first, then the rest (the rotation already mixes them)
+  const items = d.items.map(dailyItem).filter(Boolean);
+  const fresh = items.filter((i) => isNewItem(i, d.date));
+  $('daily-items').innerHTML = [...fresh, ...items.filter((i) => !fresh.includes(i))].map((item) => card(item, fresh.includes(item))).join('');
   tickDaily();
 }
 function tickDaily() {
@@ -680,9 +688,89 @@ function renderShop() {
   $('shop').classList.toggle('daily', shopTab === 'daily');
   [...$('shop-tabs').children].forEach((b) => b.classList.toggle('on', b.dataset.shop === shopTab));
   document.querySelectorAll('#shop .shop-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== shopTab));
+  if (shopPreview) renderPreviewInfo();
   if (shopTab === 'daily') return renderDaily();
   $('shop-items').innerHTML = SHOP.map((item) => card(item, false)).join('');
 }
+// "NEW!" on the Item Shop button while today's shop has items from the newest batch
+function updateShopButton() {
+  const d = todaysShop();
+  const anyNew = dailyIds(d).some((id) => isNewItem(dailyItem(id), d.date));
+  $('open-shop').innerHTML = `⭐ ITEM SHOP${anyNew ? ' <span class="new-dot">NEW!</span>' : ''}`;
+}
+updateShopButton();
+
+// ---------- 🔍 shop preview: the Locker Room preview canvas moves into a pop-up and shows the item ----------
+let shopPreview = null; // { item, model, start, yaw, drag }
+const PATTERN_NAMES = { flames: 'Flame jersey', camo: 'Camo jersey', stars: 'Starry jersey', chevron: 'V-stripe jersey', sash: 'Sash jersey', candy: 'Candy-stripe jersey',
+  split: 'Two-tone jersey', sweater: 'Holiday sweater jersey', frost: 'Frosty jersey', dino: 'Dino-scale jersey', mech: 'Armor-plate jersey', stripes: 'Striped jersey' };
+function itemFeatures(item) {
+  if (item.kind === 'emote') {
+    const e = EMOTES.find((x) => x.id === item.emote);
+    return [e && e.loop ? '🔁 Loops until you move' : '▶️ One-shot celebration', item.emote === 16 && '🏆 Comes with a trophy'];
+  }
+  const p = SKIN_PRESETS.find((x) => x.id === item.id), st = p.style || {};
+  return [st.pattern && PATTERN_NAMES[st.pattern], st.chrome && 'Chrome helmet', st.glow && 'Glowing trim', st.decal && 'Helmet logo', st.visor && 'Tinted visor',
+    st.fin === 'spikes' && 'Spiky helmet', st.fin === 'antenna' && 'Robot antennas', st.back === 'cape' && 'Cape', st.back === 'jetpack' && 'Rocket pack',
+    st.gloves && 'Matching gloves', st.chute && 'Matching parachute', p.horns && 'Horns'];
+}
+function previewSkin(item) {
+  const keep = { number: profile.skin.number, tone: profile.skin.tone, hair: profile.skin.hair, hairStyle: profile.skin.hairStyle, eyes: profile.skin.eyes, smile: profile.skin.smile, helmetOn: profile.skin.helmetOn };
+  if (item.kind === 'skin') return sanitizeSkin({ ...SKIN_PRESETS.find((p) => p.id === item.id), preset: item.id, ...keep });
+  return item.shop === 'daily' ? { ...profile.skin } : { ...profile.skin, horns: profile.skin.horns || '#f3ead2' };
+}
+function renderPreviewInfo() {
+  const { item } = shopPreview, r = RARITIES[item.rarity || 0];
+  $('sp-card').style.setProperty('--rc', r.color);
+  $('sp-new').classList.toggle('hidden', !isNewItem(item, shopDate()));
+  $('sp-name').textContent = item.name;
+  $('sp-meta').textContent = `${r.name} ${item.kind === 'skin' ? 'Outfit' : 'Emote'}`;
+  $('sp-feat').innerHTML = itemFeatures(item).filter(Boolean).map((f) => `<span>${esc(f)}</span>`).join('');
+  const b = $('sp-buy');
+  b.dataset.buy = item.id; b.className = buyClass(item); b.textContent = buyLabel(item);
+}
+let previewHome = null;
+function openPreview(item) {
+  closePreview();
+  const model = createPlayer(previewSkin(item));
+  shopPreview = { item, model, start: performance.now() / 1000, yaw: 0.35, drag: null };
+  pScene.add(model);
+  if (pModel) pModel.visible = false;
+  const cv = $('preview');
+  previewHome = { parent: cv.parentNode, next: cv.nextSibling };
+  $('sp-stage').prepend(cv);
+  renderPreviewInfo();
+  $('shop-preview').classList.remove('hidden');
+  sfx.click();
+}
+function closePreview() {
+  if (!shopPreview) return;
+  pScene.remove(shopPreview.model); disposePlayer(shopPreview.model);
+  shopPreview = null;
+  if (pModel) pModel.visible = true;
+  previewHome.parent.insertBefore($('preview'), previewHome.next);
+  $('shop-preview').classList.add('hidden');
+}
+function animateShopPreview(t) {
+  const P = shopPreview, m = P.model, el = t - P.start;
+  if (P.item.kind === 'emote') {
+    const E = EMOTES.find((e) => e.id === P.item.emote), len = E.loop ? 1e9 : E.dur + 1.2;
+    m.rotation.y = Math.PI + P.yaw;
+    animatePlayer(m, { speed: 0, phase: 0, emote: P.item.emote, emoteT: el % len, t }, 1 / 60);
+  } else {
+    if (!P.drag) P.yaw += 0.01;   // slow turntable so you see the back too (cape, rocket pack, number)
+    m.rotation.y = Math.PI + P.yaw;
+    animatePlayer(m, { speed: 0, phase: 0, hero: true, emote: 0, emoteT: 0, t }, 1 / 60);
+  }
+}
+$('sp-close').onclick = () => { closePreview(); sfx.click(); };
+$('shop-preview').addEventListener('pointerdown', (e) => {
+  if (e.target === $('shop-preview')) return closePreview();   // tap outside the card
+  if (shopPreview && e.target.id === 'preview') { shopPreview.drag = { x: e.clientX, yaw: shopPreview.yaw }; e.target.setPointerCapture?.(e.pointerId); }
+});
+$('shop-preview').addEventListener('pointermove', (e) => { const P = shopPreview; if (P && P.drag) P.yaw = P.drag.yaw + (e.clientX - P.drag.x) * 0.012; });
+for (const ev of ['pointerup', 'pointercancel']) $('shop-preview').addEventListener(ev, () => { if (shopPreview) shopPreview.drag = null; });
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && shopPreview) closePreview(); });
 $('shop-tabs').onclick = (e) => {
   const b = e.target.closest('button[data-shop]'); if (!b || b.dataset.shop === shopTab) return;
   shopTab = b.dataset.shop; store.set('fr_shop_tab', shopTab); sfx.click();
@@ -697,12 +785,15 @@ function openShop(tab) {
   renderShop();
 }
 $('open-shop').onclick = () => openShop('daily'); // the Daily Shop is the front page
-$('close-shop').onclick = () => { $('shop').classList.add('hidden'); renderSkins(); };
+$('close-shop').onclick = () => { closePreview(); $('shop').classList.add('hidden'); renderSkins(); };
 $('shop').onclick = (e) => {
+  const pv = e.target.closest('[data-preview]');
+  if (pv) { const it = anyShopItem(pv.dataset.preview); if (it) openPreview(it); return; }
   const b = e.target.closest('button[data-buy]'); if (!b) return;
   const item = anyShopItem(b.dataset.buy); if (!item) return;
   if (account.owned.includes(item.id)) {
     if (item.kind === 'skin') { $('close-shop').click(); wearSkin(item.id); renderSkins(); }
+    else if (shopPreview) closePreview();
     return;
   }
   if (account.bucks < item.price) { $('shop-msg').textContent = `You need ${(item.price - account.bucks).toLocaleString()} more Ball Bucks. Keep playing to earn more!`; return; }

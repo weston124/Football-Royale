@@ -190,6 +190,7 @@ function createRealPlayer(skin, opts) {
   const lasso = new THREE.Mesh(lassoRes[0], lassoRes[1]);
   lasso.rotation.x = Math.PI / 2; lasso.position.y = -0.05; lasso.visible = false;
   P.hand.add(lasso); P.lasso = lasso;
+  P.trophy = trophyProp(); P.hand.add(P.trophy);
   P.chute = makeChute(skin); root.add(P.chute);
   if (opts.shadow !== false) { P.shadow = blobShadow(); root.add(P.shadow); }
   const B = h.bones, rootY = B.root.position.y;
@@ -214,6 +215,27 @@ function createRealPlayer(skin, opts) {
   return root;
 }
 
+// Gold cup for the Trophy Hoist emote (one shared geometry + material, hidden until the emote)
+let trophyRes = null;
+function trophyProp() {
+  if (!trophyRes) {
+    const pts = [[0, 0], [0.07, 0], [0.07, 0.02], [0.025, 0.035], [0.018, 0.09], [0.03, 0.11], [0.085, 0.15], [0.1, 0.26], [0.095, 0.27], [0, 0.2]]
+      .map(([x, y]) => new THREE.Vector2(x, y));
+    const cup = new THREE.LatheGeometry(pts, 20);
+    const parts = [cup];
+    for (const sx of [-1, 1]) {
+      const hdl = new THREE.TorusGeometry(0.045, 0.011, 6, 14, Math.PI);
+      hdl.rotateZ(sx * -Math.PI / 2); hdl.translate(sx * 0.1, 0.2, 0); parts.push(hdl);
+    }
+    const star = new THREE.OctahedronGeometry(0.03); star.translate(0, 0.3, 0); parts.push(star);
+    const geo = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)).map((g) => { g.deleteAttribute('uv'); return g; }));
+    trophyRes = [geo, new THREE.MeshStandardMaterial({ color: '#ffc629', metalness: 1, roughness: 0.22 })];
+  }
+  const t = new THREE.Mesh(trophyRes[0], trophyRes[1]);
+  t.position.set(0, 0.02, 0); t.rotation.x = Math.PI; t.visible = false;   // the hand points down at rest: flip the cup upright
+  return t;
+}
+
 let chuteRes = null;
 function makeChute(skin) {
   if (!chuteRes) {
@@ -226,9 +248,10 @@ function makeChute(skin) {
     };
   }
   const chute = new THREE.Group();
-  const canopy = new THREE.Mesh(chuteRes.canopy, mat(skin.accent, { side: THREE.DoubleSide }));
+  const cc = (skin.style && skin.style.chute) || [skin.accent, skin.jersey];   // Daily Shop outfits bring their own parachute colors
+  const canopy = new THREE.Mesh(chuteRes.canopy, mat(cc[0], { side: THREE.DoubleSide }));
   canopy.scale.y = 0.55; canopy.position.y = 4.4; chute.add(canopy);
-  const stripe = new THREE.Mesh(chuteRes.stripe, mat(skin.jersey, { side: THREE.DoubleSide }));
+  const stripe = new THREE.Mesh(chuteRes.stripe, mat(cc[1], { side: THREE.DoubleSide }));
   stripe.scale.y = 0.55; stripe.position.y = 4.4; chute.add(stripe);
   chute.add(new THREE.LineSegments(chuteRes.lines, chuteRes.lineMat));
   chute.visible = false;
@@ -455,6 +478,7 @@ export function animatePlayer(model, s, dt) {
   p.chute.visible = s.phase === 3;
   if (p.shadow) p.shadow.visible = s.phase === 0 || !s.phase;
   p.lasso.visible = s.emote === 7;
+  if (p.trophy) p.trophy.visible = s.emote === 16;
   let bx = 0, by = 0, bz = 0, bodyY = 0.98, sx = 0, sy = 0, hx = 0, hy = 0;
   let lL = 0, lR = 0, lLz = 0, lRz = 0, kL = -0.05, kR = -0.05;
   let aL = 0.05, aR = 0.05, aLz = -0.12, aRz = 0.12, eL = 0.25, eR = 0.25, aLy = 0, aRy = 0;
@@ -586,6 +610,69 @@ export function animatePlayer(model, s, dt) {
         eL = 0.35 + Math.sin(ph + 0.9) * 0.35; eR = 0.35 + Math.sin(ph - 1.3) * 0.35;
         bz = Math.sin(ph - 1.1) * 0.12; hy = Math.sin(ph - 1.1) * 0.2;
         bodyY += Math.sin(ph * 2) * 0.025; kL = kR = -0.15 - Math.max(0, Math.sin(ph * 2)) * 0.15;
+        break;
+      }
+      // ---------- "Big Game Drop" emotes ----------
+      case 14: { // Robo Rumble: stiff robot poses that snap on the beat, head ticks side to side
+        const POSES = [
+          [PI / 2, 0, -0.1, PI / 2, PI / 2, 0, 0.1, PI / 2, 0.35],     // aL aLy aLz eL | aR aRy aRz eR | head yaw
+          [0.2, 0, -1.4, 0.05, PI / 2, 0, 0.1, PI / 2, -0.35],
+          [PI / 2, 0, -0.1, PI / 2, 0.2, 0, 1.4, 0.05, 0.35],
+          [PI - 0.3, 0, -0.2, 1.6, PI - 0.3, 0, 0.2, 1.6, 0],
+        ];
+        const beat = e * 2.5, b = Math.floor(beat), k = Math.min(1, (beat - b) / 0.18);
+        const A = POSES[(b + 3) % 4], B = POSES[b % 4], m = (i) => lerp(A[i], B[i], k);
+        aL = m(0); aLy = m(1); aLz = m(2); eL = m(3); aR = m(4); aRy = m(5); aRz = m(6); eR = m(7); hy = m(8);
+        kL = kR = -0.3 + (k < 1 ? 0.12 : 0); bodyY -= 0.04 - (k < 1 ? 0.03 : 0);
+        sy = (b % 2 ? -0.12 : 0.12) * k;
+        break;
+      }
+      case 15: { // Field Goal Kick: plant, swing the leg through, then both arms up: it's good!
+        if (e < 0.55) { const k = e / 0.55; lR = -0.7 * k; kR = -0.9 * k; aL = 0.5 * k; aLz = -0.6 * k; aR = -0.4 * k; sx = 0.1 * k; }
+        else if (e < 0.85) { const k = (e - 0.55) / 0.3; lR = lerp(-0.7, 1.7, k); kR = lerp(-0.9, -0.05, k); aL = lerp(0.5, -0.4, k); aLz = -0.6; aR = lerp(-0.4, 0.8, k); sx = lerp(0.1, -0.2, k); bodyY += k * 0.05; }
+        else if (e < 1.25) { lR = 1.7; kR = -0.05; aL = -0.4; aLz = -0.6; aR = 0.8; sx = 0.15; hx = -0.25; bodyY += 0.05; }
+        else { const k = Math.min(1, (e - 1.25) / 0.2); lR = lerp(1.7, 0, k); kR = -0.1; aL = aR = PI - 0.05; aLz = -0.12; aRz = 0.12; eL = eR = 0.05; hx = -0.2; bodyY += Math.abs(Math.sin((e - 1.25) * 9)) * 0.1 * k; }
+        break;
+      }
+      case 16: { // Trophy Hoist: the gold cup goes up overhead and pumps to the crowd
+        const pump = Math.sin(e * 5);
+        aR = PI - 0.25 + pump * 0.12; aRz = 0.22; eR = 0.25 + pump * 0.25;
+        aL = PI - 0.45 + pump * 0.12; aLz = -0.05; eL = 0.75 + pump * 0.25; aLy = 0.3;
+        kL = kR = -0.12 - Math.max(0, -pump) * 0.25; bodyY -= Math.max(0, -pump) * 0.05;
+        hx = -0.3; sy = Math.sin(e * 2.5) * 0.25; by = Math.sin(e * 1.25) * 0.5;
+        break;
+      }
+      case 17: { // End Zone Twirl: a full twirl with arms up, a hop, then a pose
+        const k = Math.min(1, e / 1.5), sk = k * k * (3 - 2 * k);
+        by = sk * PI * 2;
+        if (e < 1.5) {
+          aL = aR = PI - 0.4; aLz = -0.35; aRz = 0.35; eL = eR = 0.2;
+          lL = 0.3 * Math.sin(k * PI); kL = -0.9 * Math.sin(k * PI); bodyY += 0.04 * Math.sin(k * PI);
+        } else if (e < 2.0) {
+          const j = (e - 1.5) / 0.5; bodyY += Math.sin(j * PI) * 0.28; kL = kR = -0.5 * Math.sin(j * PI);
+          aL = aR = PI - 0.15; aLz = -0.5; aRz = 0.5; eL = eR = 0.1;
+        } else { // point at the crowd
+          aR = PI / 2 + 0.3; aRz = 0.35; eR = 0.05; aL = 0.3; aLz = -0.3; eL = 1.9; lLz = -0.16; lRz = 0.16; hx = -0.12; sx = 0.08;
+        }
+        break;
+      }
+      case 18: { // Hike Hike Hike: QB cadence, crouched, pointing out the defense, a leg kick on HIKE
+        const ph = e % 3.2, side = ph < 1.6 ? 1 : -1, q = ph % 1.6;
+        sx = -0.35; kL = kR = -0.6; bodyY -= 0.09; lL = lR = 0.35; lLz = -0.16; lRz = 0.16;
+        hy = side * 0.55; sy = side * 0.25;
+        aR = PI / 2 - 0.1; aRz = side > 0 ? 0.2 : 0.1; aRy = side * 0.6; eR = 0.15;   // point one way...
+        aL = 0.5; aLz = -0.25; eL = 1.4;                                                 // ...other hand ready for the snap
+        if (q > 1.1 && q < 1.5) { const k = Math.sin((q - 1.1) / 0.4 * PI); lL = 0.35 + k * 0.7; kL = -0.6 - k * 0.6; aL += k * 0.6; }
+        break;
+      }
+      case 19: { // Dino Stomp: tiny arms, big stomps, a roar every few steps
+        const k = Math.sin(e * 4);
+        sx = -0.35; bz = k * 0.1; sy = -k * 0.2;
+        lL = Math.max(0, k) * 0.9; lR = Math.max(0, -k) * 0.9; kL = -0.3 - Math.max(0, k) * 1.2; kR = -0.3 - Math.max(0, -k) * 1.2;
+        bodyY -= 0.06 - Math.abs(k) * 0.04;
+        aL = aR = 0.35; aLz = -0.3; aRz = 0.3; eL = eR = 1.9 + Math.sin(e * 16) * 0.15;   // tiny arms
+        const roar = (e % 4) > 3 ? Math.sin(((e % 4) - 3) * PI) : 0;
+        hx = 0.2 + roar * 0.5; hy = -k * 0.2 * (1 - roar);
         break;
       }
     }
