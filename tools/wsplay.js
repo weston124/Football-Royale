@@ -22,7 +22,7 @@ const DIFF = process.argv[3] || 'normal';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const map = generateMap();
 const world = new World();
-for (const b of map.boxes) world.add({ min: b.min.slice(), max: b.max.slice() });
+world.addMap(map);
 const nav = buildNav(map);
 const yawTo = (dx, dz) => Math.atan2(-dx, -dz);
 const dirFrom = (yaw, pitch) => { const c = Math.cos(pitch); return [-Math.sin(yaw) * c, Math.sin(pitch), -Math.cos(yaw) * c]; };

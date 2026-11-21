@@ -1,5 +1,6 @@
 // Collision world, player movement and ray casting. Shared by server and client.
 import { PLAYER, MAP_HALF, DROP } from './constants.js';
+import { elevatorBoxes } from './elevators.js';
 
 const CELL = 16;
 
@@ -10,6 +11,28 @@ export class World {
     this.boxes = new Map();
     this.nextId = 1;
     this.stamp = 0;
+    // Moving platforms (shared/elevators.js): their boxes are computed from `time` (server
+    // clock seconds; the server sets it every tick, the client every frame from its estimate).
+    this.elevators = [];
+    this.time = 0;
+    this._movers = [];
+    this._moversT = NaN;
+  }
+  // Boxes of the elevators at this.time (cab columns + closed doors), cached per time value.
+  movers() {
+    if (!this.elevators.length) return this._movers;
+    if (this._moversT !== this.time) {
+      this._movers.length = 0;
+      for (const e of this.elevators) elevatorBoxes(e, this.time, this._movers);
+      this._moversT = this.time;
+    }
+    return this._movers;
+  }
+  // Static map boxes (keeps ramps) + elevators.
+  addMap(map) {
+    for (const b of map.boxes) this.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind, ramp: b.ramp });
+    this.elevators = map.elevators || [];
+    return this;
   }
   key(cx, cz) { return cx * 4096 + cz; }
   add(box) {
@@ -76,9 +99,32 @@ export function supportHeight(world, x, y, z) {
     } else top = b.max[1];
     if (top <= y + PLAYER.stepUp && top > best) best = top;
   }
+  if (world.elevators.length) {
+    for (const b of world.movers()) {
+      if (b.lift) { // a cab only carries you when you stand over it (centre inside)...
+        if (x < b.min[0] || x > b.max[0] || z < b.min[2] || z > b.max[2]) continue;
+        if (b.max[1] > best) best = b.max[1]; // ...and anyone below its floor is pushed up onto it
+        continue;
+      } else if (x + r <= b.min[0] || x - r >= b.max[0] || z + r <= b.min[2] || z - r >= b.max[2]) continue;
+      const top = b.max[1];
+      if (top <= y + PLAYER.stepUp && top > best) best = top;
+    }
+  }
   return best;
 }
 
+// Top of the elevator cab under (x, z) (centre over it), or null.
+export function liftTop(world, x, z) {
+  if (!world.elevators.length) return null;
+  let top = null;
+  for (const b of world.movers()) {
+    if (!b.lift || x < b.min[0] || x > b.max[0] || z < b.min[2] || z > b.max[2]) continue;
+    if (top === null || b.max[1] > top) top = b.max[1];
+  }
+  return top;
+}
+
+export function bodyBlocked(world, x, y, z, onGround, ignore = null) { return blocked(world, x, y, z, onGround, ignore); }
 function blocked(world, x, y, z, onGround, ignore = null) {
   const r = PLAYER.radius;
   const list = world.query(x - r, z - r, x + r, z + r, tmp);
@@ -88,6 +134,15 @@ function blocked(world, x, y, z, onGround, ignore = null) {
     const feet = y + (onGround ? PLAYER.stepUp : 0.05);
     if (feet >= b.max[1] || y + PLAYER.height <= b.min[1]) continue;
     return b;
+  }
+  if (world.elevators.length) {
+    for (const b of world.movers()) {
+      if (ignore && ignore.some((o) => o.elevator === b.elevator && o.lift === b.lift && o.min[1] === b.min[1])) continue;
+      if (x + r <= b.min[0] || x - r >= b.max[0] || z + r <= b.min[2] || z - r >= b.max[2]) continue;
+      const feet = y + (onGround ? PLAYER.stepUp : 0.05);
+      if (feet >= b.max[1] || y + PLAYER.height <= b.min[1]) continue;
+      return b;
+    }
   }
   return null;
 }
@@ -147,6 +202,7 @@ export function stepPlayer(world, p, input, dt) {
       else { p.y = sup; p.vy = 0; p.onGround = true; }
     } else {
       if (p.onGround && p.y - sup < 0.35) { p.y = sup; p.vy = 0; } // stick to ramps going down
+      else if (p.onGround && p.y - sup < 2 && liftTop(world, p.x, p.z) === sup) { p.y = sup; p.vy = 0; } // ride a cab down (even at low fps)
       else { p.y = ny; p.onGround = false; }
     }
   }
@@ -170,10 +226,16 @@ export function stepFalling(world, p, input, dt) {
   let fall = v;
   if (!gliding && input.f > 0 && input.pitch < -0.6) fall = v * 1.35; // dive
   p.vy += (-fall - p.vy) * Math.min(1, 3 * dt);
-  p.x += p.vx * dt; p.z += p.vz * dt;
+  // Sideways: walls stop you (you slide down them) instead of popping you onto the roof, so
+  // parachuting in under a roof (the Mega Dome's open roof) lands you on what's below.
+  const nx = p.x + p.vx * dt;
+  if (!blocked(world, nx, p.y, p.z, false)) p.x = nx; else p.vx = 0;
+  const nz = p.z + p.vz * dt;
+  if (!blocked(world, p.x, p.y, nz, false)) p.z = nz; else p.vz = 0;
   clampMap(p);
+  // highest surface below where we were this step (so fast falls can't pass through floors)
+  const sup = supportHeight(world, p.x, p.y, p.z);
   p.y += p.vy * dt;
-  const sup = supportHeight(world, p.x, 1e4, p.z);
   if (!gliding && p.y - sup < DROP.autoDeploy) p.phase = 'glide';
   if (p.y <= sup) { p.y = sup; p.vy = 0; p.phase = 'ground'; p.onGround = true; return true; }
   return false;

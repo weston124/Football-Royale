@@ -9,6 +9,7 @@ import { WEAPONS, CONSUMABLES } from '../shared/weapons.js';
 import { PLAYER, BOT_DIFFICULTY, BOT_VS_BOT, MAP_HALF, PICKUP_RANGE, BUILD } from '../shared/constants.js';
 import { MAP } from './match.js';
 import { buildNav } from './nav.js';
+import { DOME, underDomeRoof } from '../shared/megadome.js';
 
 export const BOT_NAMES = [
   'BlitzBot', 'Sir Tackles', 'QB Quinn', 'Hut Hut', 'Fumble Fox', 'Endzone Ed', 'Punt Pete', 'Linebacker Lou',
@@ -38,6 +39,8 @@ function init(match, b) {
   let best = null, bd = 30;
   for (const s of MAP.loot) { const d = Math.hypot(s.x - tx, s.z - tz); if (d < bd && s.y < 1) { bd = d; best = s; } }
   if (best) { tx = best.x + rnd.range(-2, 2); tz = best.z + rnd.range(-2, 2); }
+  // the Mega Dome is roofed: drop in through the open roof over the field instead
+  if (underDomeRoof(tx, tz)) { tx = rnd.range(-DOME.OPEN.x + 6, DOME.OPEN.x - 6); tz = rnd.range(-DOME.OPEN.z + 4, DOME.OPEN.z - 4); }
   const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd());
   b.ai = {
     land: { x: tx, z: tz }, jumpAt: 0,
@@ -500,6 +503,8 @@ function think(match, b, ai, D, t) {
   }
   for (const c of match.chests) {
     if (c.open) continue;
+    if (c.reach === undefined) c.reach = nav().reachable(c.x, c.y, c.z);
+    if (!c.reach && Math.abs(c.y - b.y) > 1.5) continue; // e.g. up in a Mega Dome suite
     const d = Math.hypot(c.x - b.x, c.z - b.z) + Math.abs(c.y - b.y) * 3;
     if (d > radius) continue;
     const sk = ai.skip.get('c' + c.id);

@@ -28,7 +28,7 @@ const drive = (m, p, x, z, extra = {}) => m.handle(p, { t: 'in', x, y: 0, z, yaw
 
 test('vehicle spots are on open ground; ~16 in the city, 2 on Party Island', () => {
   const world = new World();
-  for (const b of MAP.boxes) world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
+  world.addMap(MAP);
   const city = vehicleSpawns(MAP, 'normal');
   assert.ok(city.length >= 14 && city.length <= 20, `${city.length} vehicles`);
   assert.ok(city.some((v) => v.type === 'truck') && city.some((v) => v.type === 'cart'));
@@ -86,7 +86,7 @@ test('driving speed is validated (faster than running, not teleporting)', () => 
 test('vehicles stop at buildings (physics and server check)', () => {
   // Hall of Champs south wall: z = 314 (0.8 m thick), x -27..-3
   const world = new World();
-  for (const b of MAP.boxes) world.add({ min: b.min.slice(), max: b.max.slice(), kind: b.kind });
+  world.addMap(MAP);
   const car = { id: 99, type: 'truck', x: -15, y: 0, z: 295, yaw: Math.PI, speed: 0 };
   let impact = 0;
   for (let i = 0; i < 60 * 4; i++) impact = Math.max(impact, stepVehicle(world, car, { f: 1, s: 0 }, 1 / 60));

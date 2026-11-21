@@ -20,7 +20,7 @@ test('drop, loot, shoot and build', { timeout: 120000 }, async () => {
   try {
     const map = generateMap();
     const world = new World();
-    for (const b of map.boxes) world.add({ min: b.min.slice(), max: b.max.slice() });
+    world.addMap(map);
     const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
     const decode = createSnapshotDecoder();
     const st = { me: null, loot: new Map(), ents: new Map(), pieces: 0, hits: 0, corr: null, started: null };

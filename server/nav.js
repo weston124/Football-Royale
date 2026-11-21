@@ -13,6 +13,9 @@ export function buildNav(map) {
   const size = N * N;
   const floor = new Float32Array(size);
   const flags = new Uint8Array(size); // 1 = blocked, 2 = roof overhead
+  // lowest overhead thing above the floor (decks, slabs, roofs): you can only drop down into
+  // a cell from a ledge if your body fits under it (the Mega Dome's stacked levels)
+  const ceil = new Float32Array(size).fill(1e9);
   const idx = (ix, iz) => iz * N + ix;
   const cellRange = (lo, hi) => [Math.max(0, Math.ceil(lo + MAP_HALF - 0.5)), Math.min(N - 1, Math.floor(hi + MAP_HALF - 0.5))];
 
@@ -31,16 +34,28 @@ export function buildNav(map) {
   // parked vehicles start at fixed spots: path around them (once driven away, bots' unstick
   // logic handles wherever they end up)
   const parked = vehicleSpawns(map, 'normal').flatMap((v) => vehicleBoxes({ ...v, y: 0 }, VEHICLE_TYPES[v.type]));
-  for (const b of map.boxes.concat(parked)) {
-    if (b.ramp) continue;
+  // elevator shafts (shared/elevators.js): the moving cab isn't a map box; bots stay out
+  const shafts = (map.elevators || []).map((e) => ({ min: [e.x0, 0, e.z0], max: [e.x1, 1e4, e.z1] }));
+  for (const b of map.boxes.concat(parked, shafts)) {
     const [x0, x1] = cellRange(b.min[0] - r, b.max[0] + r);
     const [z0, z1] = cellRange(b.min[2] - r, b.max[2] + r);
     for (let iz = z0; iz <= z1; iz++) for (let ix = x0; ix <= x1; ix++) {
       const i = idx(ix, iz), f = floor[i];
+      if (b.ramp) { // sloped roofs: only overhead (walking up ramps isn't planned)
+        if (b.min[1] >= f + PLAYER.height) { flags[i] |= 2; if (b.min[1] < ceil[i]) ceil[i] = b.min[1]; }
+        continue;
+      }
       if (b.max[1] > f + STEP && b.min[1] < f + PLAYER.height) flags[i] |= 1;
-      else if (b.min[1] >= f + PLAYER.height) flags[i] |= 2;
+      else if (b.min[1] >= f + PLAYER.height) { flags[i] |= 2; if (b.min[1] < ceil[i]) ceil[i] = b.min[1]; }
     }
   }
+  // can a player go from cell a to its neighbour b? (b not blocked is checked by the caller)
+  const passable = (a, b) => {
+    const fa = floor[a], fb = floor[b];
+    if (fb - fa > STEP) return false;                    // too high to step up
+    if (fb < fa - STEP && ceil[b] < fa + PLAYER.height) return false; // drop into a cell under a low ceiling
+    return true;
+  };
   // map border
   for (let k = 0; k < N; k++) { flags[idx(k, 0)] |= 1; flags[idx(k, N - 1)] |= 1; flags[idx(0, k)] |= 1; flags[idx(N - 1, k)] |= 1; }
 
@@ -77,7 +92,7 @@ export function buildNav(map) {
     trees.get(key).push({ x: t.x, z: t.z, r2: (t.r * 0.75) ** 2, y0: t.h * 0.35, y1: t.h * 0.95 });
   }
 
-  const nav = { N, floor, flags, comp, main, compSize };
+  const nav = { N, floor, flags, ceil, comp, main, compSize };
   const cellOf = (x, z) => {
     const ix = Math.max(0, Math.min(N - 1, Math.floor(x + MAP_HALF)));
     const iz = Math.max(0, Math.min(N - 1, Math.floor(z + MAP_HALF)));
@@ -140,7 +155,7 @@ export function buildNav(map) {
     for (let i = 1; i <= n; i++) {
       const c = cellOf(ax + (bx - ax) * i / n, az + (bz - az) * i / n);
       if (c === prev) continue;
-      if (flags[c] & 1 || floor[c] - floor[prev] > STEP) return false;
+      if (flags[c] & 1 || !passable(prev, c)) return false;
       prev = c;
     }
     return true;
@@ -235,10 +250,10 @@ export function buildNav(map) {
         const nx = cx + dx, nz = cz + dz;
         if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
         const n = nz * N + nx;
-        if (flags[n] & 1 || floor[n] - fc > STEP || closed[n] === stamp) continue;
+        if (flags[n] & 1 || closed[n] === stamp || !passable(c, n)) continue;
         if (dx && dz) { // no corner cutting
           const a = cz * N + nx, b = nz * N + cx;
-          if (flags[a] & 1 || flags[b] & 1 || floor[a] - fc > STEP || floor[b] - fc > STEP) continue;
+          if (flags[a] & 1 || flags[b] & 1 || !passable(c, a) || !passable(c, b)) continue;
         }
         const ng = g[c] + (dx && dz ? SQ2 : 1) + (floor[n] < fc - STEP ? 2 : 0);
         if (seen[n] === stamp && ng >= g[n]) continue;

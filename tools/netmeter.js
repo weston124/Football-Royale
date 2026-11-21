@@ -12,7 +12,7 @@ const SECS = Number(process.argv[2]) || 30;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const map = generateMap();
 const world = new World();
-for (const b of map.boxes) world.add({ min: b.min.slice(), max: b.max.slice() });
+world.addMap(map);
 const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 const st = { started: false, corr: null, me: null, measuring: false, bytes: 0, snapBytes: 0, snaps: 0, max: 0, ents: new Map(), evBytes: 0, psBytes: 0 };
 const dec = createSnapshotDecoder();
